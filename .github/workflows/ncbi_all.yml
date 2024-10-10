@@ -74,10 +74,10 @@ jobs:
               cd ${base_path#ftp://ftp.ncbi.nlm.nih.gov}/$dir_to_cd
               cls -1 ${accession}*.gff.gz
               quit
-            " | awk -v acc="$accession" -v base="$base_path" '
+            " | awk -v acc="$accession" -v base="$base_path" -v dir="$dir_to_cd" '
                   /\.gff\.gz$/ {
                     https_base = gensub(/^ftp:\/\//, "https://", 1, base)
-                    print acc "\t" https_base "/" $dir_to_cd $NF
+                    print acc "\t" https_base "/" dir $NF
                   }
             ' >> ncbi_all.tsv
             
