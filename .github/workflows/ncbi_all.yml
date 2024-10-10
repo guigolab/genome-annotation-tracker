@@ -81,9 +81,6 @@ jobs:
                   }
             ' >> ncbi_all.tsv
             
-            # Remove the temporary raw output file
-            rm $RAW_OUTPUT
-            
           done < ncbi_gff3_paths_base.tsv
 
 
