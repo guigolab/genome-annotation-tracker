@@ -33,6 +33,7 @@ jobs:
           
       - name: Extract Assembly Accessions and Generate FTP Paths
         run: |
+          > ncbi_gff3_paths_base.tsv
           tail -n +2 assembly_accessions.txt | head -n 10 > assembly_accessions_10.txt
           cat assembly_accessions_10.txt
           # Create formatted FTP paths for each assembly accession
