@@ -44,32 +44,33 @@ jobs:
       - name: Recursively Search for .gff.gz Files on NCBI FTP
         run: |
           > ncbi_all.tsv  # Create an empty file for final paths
-          
           # Loop through base FTP paths
           while read -r accession base_path; do
             echo "Searching in $base_path"
-
-            # Use lftp to list files recursively
-            raw_output=$(lftp -c "
+            # Temp file to hold the raw ls -R output
+            RAW_OUTPUT="raw_ls_output.txt"
+            
+            # Use lftp to connect to the server and list all files
+            lftp -c "
               set net:timeout 10
               set net:max-retries 3
               open ftp.ncbi.nlm.nih.gov
               cd ${base_path#ftp://ftp.ncbi.nlm.nih.gov}
               ls -R
               quit
-            ")
-
-            # Print the raw ls -R output
-            echo "Raw ls -R output for $accession:"
-            echo "$raw_output"
-
-            # Process the raw output to find .gff.gz files and append to TSV
-            echo "$raw_output" | awk -v base_path="$base_path" '
-            # When a directory name is printed (ends with a colon), store it
-            /:$/ {dir=substr($0, 1, length($0)-1); next}
-            # If the line contains .gff.gz, print the full FTP path (directory + filename)
-            /\.gff\.gz$/ {print base_path "/" $NF}
-            ' >> ncbi_all.tsv
+            " > $RAW_OUTPUT
+            
+            # Process the raw output to get only full paths to .gff3.gz files
+            awk '
+              # When a directory name is printed (ends with a colon), store it
+              /:$/ {dir=substr($0, 1, length($0)-1); next}
+              # If the line contains .gff3.gz, print the full path (directory + filename)
+              /\.gff\.gz$/ {print dir "/" $NF}
+            ' $RAW_OUTPUT >> ncbi_all.tsv
+            
+            # Remove the temporary raw output file
+            rm $RAW_OUTPUT
+            
           done < ncbi_gff3_paths_base.tsv
 
       - name: Commit & Push changes
