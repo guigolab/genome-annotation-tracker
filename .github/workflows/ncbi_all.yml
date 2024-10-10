@@ -33,12 +33,13 @@ jobs:
           
       - name: Extract Assembly Accessions and Generate FTP Paths
         run: |
+          tail -n +2 assembly_accessions.txt | head -n 10 > assembly_accessions_10.txt
           # Create formatted FTP paths for each assembly accession
           while read -r accession; do
             # Generate the base path from the assembly accession
             base_path="ftp://ftp.ncbi.nlm.nih.gov/genomes/all/${accession:0:3}/${accession:4:3}/${accession:7:3}/${accession:10:3}"
             echo -e "${accession}\t${base_path}" >> ncbi_gff3_paths_base.tsv
-          done < assembly_accessions.txt
+          done < assembly_accessions_10.txt
 
       - name: Recursively Search for .gff.gz Files on NCBI FTP
         run: |
@@ -46,17 +47,24 @@ jobs:
           
           # Loop through base FTP paths
           while read -r accession base_path; do
-            echo "Searching for .gff.gz files in $base_path"
+            echo "Searching in $base_path"
 
-            # Use lftp to list files recursively and find .gff.gz files
-            lftp -c "
+            # Use lftp to list files recursively
+            raw_output=$(lftp -c "
               set net:timeout 10
               set net:max-retries 3
               open ftp.ncbi.nlm.nih.gov
               cd ${base_path#ftp://ftp.ncbi.nlm.nih.gov}
               ls -R
               quit
-            " | awk -v base_path="$base_path" '
+            ")
+
+            # Print the raw ls -R output
+            echo "Raw ls -R output for $accession:"
+            echo "$raw_output"
+
+            # Process the raw output to find .gff.gz files and append to TSV
+            echo "$raw_output" | awk -v base_path="$base_path" '
             # When a directory name is printed (ends with a colon), store it
             /:$/ {dir=substr($0, 1, length($0)-1); next}
             # If the line contains .gff.gz, print the full FTP path (directory + filename)
