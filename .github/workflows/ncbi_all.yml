@@ -34,6 +34,7 @@ jobs:
       - name: Extract Assembly Accessions and Generate FTP Paths
         run: |
           tail -n +2 assembly_accessions.txt | head -n 10 > assembly_accessions_10.txt
+          cat assembly_accessions_10.txt
           # Create formatted FTP paths for each assembly accession
           while read -r accession; do
             # Generate the base path from the assembly accession
