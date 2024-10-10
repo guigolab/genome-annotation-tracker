@@ -1,0 +1,35 @@
+name: Retrieve GFF3 Paths
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  retrieve-gff3:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Make script executable
+        run: chmod +x ./ensembl-rapid-release/script.sh
+
+      - name: Run script to retrieve GFF3 paths
+        run: ./ensembl-rapid-release/script.sh
+
+      - name: Map GFF3 paths to TSV file
+        run: |
+          awk -F'/' '{
+            accession = $3;
+            https_path = "https://ftp.ensembl.org/pub/rapid-release/species/" substr($0, 2);
+            print accession "\t" https_path
+          }' gff3_paths.txt > gff3_paths_mapped.tsv
+
+      - name: Upload GFF3 paths TSV
+        uses: actions/upload-artifact@v3
+        with:
+          name: gff3_paths_mapped
+          path: gff3_paths_mapped.tsv
