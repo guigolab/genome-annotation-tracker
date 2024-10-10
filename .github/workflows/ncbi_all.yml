@@ -45,14 +45,16 @@ jobs:
 
       - name: Recursively Search for .gff.gz Files on NCBI FTP
         run: |
-          > ncbi_all.tsv  # Create an empty file for final paths
+          # Add header to the TSV file
+          echo -e "accession\tfull_path" > ncbi_all.tsv
+
           # Loop through base FTP paths
           while read -r accession base_path; do
             echo "Searching in $base_path"
-            # Temp file to hold the raw ls -R output
+            # Temp file to hold the raw ls output
             RAW_OUTPUT="raw_ls_output.txt"
             
-            # Use lftp to connect to the server and list all files
+            # Use lftp to connect to the server and list all files in the directory
             lftp -c "
               set net:timeout 10
               set net:max-retries 3
@@ -62,19 +64,19 @@ jobs:
               quit
             " > $RAW_OUTPUT
 
-            cat $RAW_OUTPUT
-            # Process the raw output to get only full paths to .gff3.gz files
-            awk '
+            # Process the raw output to get only full paths to .gff.gz files and print accession + path
+            awk -v acc="$accession" '
               # When a directory name is printed (ends with a colon), store it
               /:$/ {dir=substr($0, 1, length($0)-1); next}
-              # If the line contains .gff.gz, print the full path (directory + filename)
-              /\.gff\.gz$/ {print dir "/" $NF}
+              # If the line contains .gff.gz, print the accession and full path (directory + filename)
+              /\.gff\.gz$/ {print acc "\t" dir "/" $NF}
             ' $RAW_OUTPUT >> ncbi_all.tsv
             
             # Remove the temporary raw output file
             rm $RAW_OUTPUT
             
           done < ncbi_gff3_paths_base.tsv
+
 
       - name: Commit & Push changes
         uses: actions-js/push@master
