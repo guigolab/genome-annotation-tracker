@@ -60,16 +60,18 @@ jobs:
               set net:max-retries 3
               open ftp.ncbi.nlm.nih.gov
               cd ${base_path#ftp://ftp.ncbi.nlm.nih.gov}
-              find .
+              dir_to_cd=\$(cls -1 ${accession}*/ | head -n 1)
+              cd dir_to_cd
+              cls -1 ${accession}*.gff.gz
               quit
             " > $RAW_OUTPUT
 
             # Process the raw output to get only full paths to .gff.gz files and print accession + path
-            awk -v acc="$accession" '
-              # When a directory name is printed (ends with a colon), store it
-              /:$/ {dir=substr($0, 1, length($0)-1); next}
-              # If the line contains .gff.gz, print the accession and full path (directory + filename)
-              /\.gff\.gz$/ {print acc "\t" dir "/" $NF}
+            awk -v acc="$accession" -v base="$base_path" '
+                  /\.gff\.gz$/ {
+                    https_base = gensub(/^ftp:\/\//, "https://", 1, base)
+                    print acc "\t" https_base "/" $NF
+                  }
             ' $RAW_OUTPUT >> ncbi_all.tsv
             
             # Remove the temporary raw output file
