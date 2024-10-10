@@ -14,18 +14,17 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Install NCBI Datasets CLI and lftp
+      - name: Install NCBI Packages and lftp
         run: |
           sudo apt-get update
           sudo apt-get install -y lftp
-
-      - name: Install required NCBI packages
-        run: |
-          #retrieve packages and set permissions
           curl -O 'https://ftp.ncbi.nlm.nih.gov/pub/datasets/command-line/v2/linux-amd64/dataformat'
           curl -O 'https://ftp.ncbi.nlm.nih.gov/pub/datasets/command-line/v2/linux-amd64/datasets'
           chmod +x datasets dataformat
-          
+
+    #- name: Environment Variables from Dotenv
+     #   uses: c-py/action-dotenv-to-setenv@v4
+        
       - name: Retrieve Eukaryotic Genomes
         run: |
           ./datasets summary genome taxon 2759 --annotated --as-json-lines |
@@ -34,14 +33,12 @@ jobs:
       - name: Extract Assembly Accessions and Generate FTP Paths
         run: |
           > ncbi_gff3_paths_base.tsv
-          tail -n +2 assembly_accessions.txt | head -n 10 > assembly_accessions_10.txt
-          cat assembly_accessions_10.txt
           # Create formatted FTP paths for each assembly accession
           while read -r accession; do
             # Generate the base path from the assembly accession
             base_path="ftp://ftp.ncbi.nlm.nih.gov/genomes/all/${accession:0:3}/${accession:4:3}/${accession:7:3}/${accession:10:3}"
             echo -e "${accession}\t${base_path}" >> ncbi_gff3_paths_base.tsv
-          done < assembly_accessions_10.txt
+          done < assembly_accessions.txt
 
       - name: Recursively Search for .gff.gz Files on NCBI FTP
         run: |
@@ -84,6 +81,13 @@ jobs:
           done < ncbi_gff3_paths_base.tsv
 
 
+      - name: Remove intermediary files
+        run: |
+          rm ncbi_gff3_paths_base.tsv
+          rm assembly_accessions.txt
+          rm datasets
+          rm dataformat
+          
       - name: Commit & Push changes
         uses: actions-js/push@master
         with:
