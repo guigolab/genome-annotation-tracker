@@ -1,0 +1,69 @@
+name: Retrieve NCBI RefSeq GFF3 Paths
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  retrieve-ncbi-gff3:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install NCBI Datasets CLI and lftp
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lftp
+
+      - name: Install required NCBI packages
+        run: |
+          #retrieve packages and set permissions
+          curl -O 'https://ftp.ncbi.nlm.nih.gov/pub/datasets/command-line/v2/linux-amd64/datasets'
+          chmod +x datasets
+          
+      - name: Retrieve Eukaryotic Genomes
+        run: |
+          ./datasets summary genome taxon 2759 --as-json-lines --annotated |
+           jq -r '.assemblies[] | .assembly.accession' eukaryotic_genomes.json >  assembly_accessions.txt
+          
+      - name: Extract Assembly Accessions and Generate FTP Paths
+        run: |
+          # Create formatted FTP paths for each assembly accession
+          while read -r accession; do
+            # Generate the base path from the assembly accession
+            base_path="ftp://ftp.ncbi.nlm.nih.gov/genomes/all/${accession:0:3}/${accession:4:3}/${accession:7:3}/${accession:10:3}"
+            echo -e "${accession}\t${base_path}" >> ncbi_gff3_paths_base.tsv
+          done < assembly_accessions.txt
+
+      - name: Recursively Search for .gff.gz Files on NCBI FTP
+        run: |
+          > ncbi_all.tsv  # Create an empty file for final paths
+          
+          # Loop through base FTP paths
+          while read -r accession base_path; do
+            echo "Searching for .gff.gz files in $base_path"
+
+            # Use lftp to list files recursively and find .gff.gz files
+            lftp -c "
+              set net:timeout 10
+              set net:max-retries 3
+              open ftp.ncbi.nlm.nih.gov
+              cd ${base_path#ftp://ftp.ncbi.nlm.nih.gov}
+              ls -R
+              quit
+            " | awk -v base_path="$base_path" '
+            # When a directory name is printed (ends with a colon), store it
+            /:$/ {dir=substr($0, 1, length($0)-1); next}
+            # If the line contains .gff.gz, print the full FTP path (directory + filename)
+            /\.gff\.gz$/ {print base_path "/" $NF}
+            ' >> ncbi_all.tsv
+          done < ncbi_gff3_paths_base.tsv
+
+      - name: Commit & Push changes
+        uses: actions-js/push@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
