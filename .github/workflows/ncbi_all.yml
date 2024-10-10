@@ -1,4 +1,4 @@
-name: Retrieve NCBI RefSeq GFF3 Paths
+name: Retrieve NCBI GFF3 Paths
 
 on:
   push:
@@ -28,7 +28,7 @@ jobs:
       - name: Retrieve Eukaryotic Genomes
         run: |
           ./datasets summary genome taxon 2759 --as-json-lines --annotated |
-           jq -r '.assemblies[] | .assembly.accession' eukaryotic_genomes.json >  assembly_accessions.txt
+           jq -r '.assemblies[] | .assembly.accession' >  assembly_accessions.txt
           
       - name: Extract Assembly Accessions and Generate FTP Paths
         run: |
