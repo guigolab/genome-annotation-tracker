@@ -27,7 +27,7 @@ jobs:
         run: |
           awk -F'/' '{
             accession = $3;
-            https_path = "https://ftp.ensembl.org/pub/rapid-release/species/" substr($0, 2);
+            https_path = "https://ftp.ensembl.org/pub/rapid-release/species" substr($0, 2);
             print accession "\t" https_path
           }' gff3_paths.txt > ensembl_rapid_release.tsv
 
