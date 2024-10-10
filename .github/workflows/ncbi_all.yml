@@ -22,13 +22,14 @@ jobs:
       - name: Install required NCBI packages
         run: |
           #retrieve packages and set permissions
+          curl -O 'https://ftp.ncbi.nlm.nih.gov/pub/datasets/command-line/v2/linux-amd64/dataformat'
           curl -O 'https://ftp.ncbi.nlm.nih.gov/pub/datasets/command-line/v2/linux-amd64/datasets'
-          chmod +x datasets
+          chmod +x datasets dataformat
           
       - name: Retrieve Eukaryotic Genomes
         run: |
-          ./datasets summary genome taxon 2759 --as-json-lines --annotated |
-           jq -r '.assemblies[] | .assembly.accession' >  assembly_accessions.txt
+          ./datasets summary genome taxon 2759 --annotated --as-json-lines |
+          ./dataformat tsv genome --fields accession >  assembly_accessions.txt
           
       - name: Extract Assembly Accessions and Generate FTP Paths
         run: |
