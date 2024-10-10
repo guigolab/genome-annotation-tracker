@@ -1,2 +1,4 @@
 # GenomeAnnotationTracker
-Tracks Eukaryotic genome annotions (gff) from NCBI and Ensembl
+Tracks Eukaryotic genome annotations (gff) from NCBI and Ensembl
+
+
