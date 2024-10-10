@@ -58,7 +58,8 @@ jobs:
               set net:max-retries 3
               open ftp.ncbi.nlm.nih.gov
               cd ${base_path#ftp://ftp.ncbi.nlm.nih.gov}
-              cls -1 ${accession}*/ | head -n 1
+              cls -1 ${accession}* | head -n 1
+              quit
             ")
 
             # If no directory is found, skip to the next accession
