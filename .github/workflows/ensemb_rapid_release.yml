@@ -29,10 +29,13 @@ jobs:
             accession = $3;
             https_path = "https://ftp.ensembl.org/pub/rapid-release/species/" substr($0, 2);
             print accession "\t" https_path
-          }' gff3_paths.txt > gff3_paths_mapped.tsv
+          }' gff3_paths.txt > ensembl_rapid_release.tsv
 
-      - name: Upload GFF3 paths TSV
-        uses: actions/upload-artifact@v3
+      - name: Remove txt file
+        run: |
+          rm gff3_paths.txt
+          
+      - name: Commit & Push changes
+        uses: actions-js/push@master
         with:
-          name: gff3_paths_mapped
-          path: gff3_paths_mapped.tsv
+          github_token: ${{ secrets.GITHUB_TOKEN }}
