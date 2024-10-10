@@ -18,10 +18,10 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y lftp
         
       - name: Make script executable
-        run: chmod +x ./ensembl-rapid-release/script.sh
+        run: chmod +x ./scripts/ensembl_rapid_release.sh
 
       - name: Run script to retrieve GFF3 paths
-        run: ./ensembl-rapid-release/script.sh
+        run: ./scripts/ensembl_rapid_release.sh
 
       - name: Map GFF3 paths to TSV file
         run: |
@@ -29,7 +29,7 @@ jobs:
             accession = $3;
             https_path = "https://ftp.ensembl.org/pub/rapid-release/species" substr($0, 2);
             print accession "\t" https_path
-          }' gff3_paths.txt > ensembl_rapid_release.tsv
+          }' gff3_paths.txt > matrices/ensembl_rapid_release.tsv
 
       - name: Remove txt file
         run: |
