@@ -61,12 +61,13 @@ jobs:
               ls -R
               quit
             " > $RAW_OUTPUT
-            
+
+            cat $RAW_OUTPUT
             # Process the raw output to get only full paths to .gff3.gz files
             awk '
               # When a directory name is printed (ends with a colon), store it
               /:$/ {dir=substr($0, 1, length($0)-1); next}
-              # If the line contains .gff3.gz, print the full path (directory + filename)
+              # If the line contains .gff.gz, print the full path (directory + filename)
               /\.gff\.gz$/ {print dir "/" $NF}
             ' $RAW_OUTPUT >> ncbi_all.tsv
             
