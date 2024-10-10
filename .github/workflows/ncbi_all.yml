@@ -77,7 +77,7 @@ jobs:
             " | awk -v acc="$accession" -v base="$base_path" '
                   /\.gff\.gz$/ {
                     https_base = gensub(/^ftp:\/\//, "https://", 1, base)
-                    print acc "\t" https_base "/" $NF
+                    print acc "\t" https_base "/" $dir_to_cd $NF
                   }
             ' >> ncbi_all.tsv
             
