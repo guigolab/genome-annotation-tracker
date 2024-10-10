@@ -29,7 +29,7 @@ jobs:
             accession = $3;
             https_path = "https://ftp.ensembl.org/pub/rapid-release/species" substr($0, 2);
             print accession "\t" https_path
-          }' gff3_paths.txt > matrices/ensembl_rapid_release.tsv
+          }' gff3_paths.txt > ensembl_rapid_release.tsv
 
       - name: Remove txt file
         run: |
