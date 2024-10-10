@@ -51,28 +51,34 @@ jobs:
           # Loop through base FTP paths
           while read -r accession base_path; do
             echo "Searching in $base_path"
-            # Temp file to hold the raw ls output
-            RAW_OUTPUT="raw_ls_output.txt"
             
+            # Capture the directory to change into
+            dir_to_cd=$(lftp -c "
+              set net:timeout 10
+              set net:max-retries 3
+              open ftp.ncbi.nlm.nih.gov
+              cd ${base_path#ftp://ftp.ncbi.nlm.nih.gov}
+              cls -1 ${accession}*/ | head -n 1
+            ")
+
+            # If no directory is found, skip to the next accession
+            [[ -z "$dir_to_cd" ]] && echo "No directory for $accession, skipping..." && continue
+
+            echo "Found directory: $dir_to_cd"            
             # Use lftp to connect to the server and list all files in the directory
             lftp -c "
               set net:timeout 10
               set net:max-retries 3
               open ftp.ncbi.nlm.nih.gov
-              cd ${base_path#ftp://ftp.ncbi.nlm.nih.gov}
-              dir_to_cd=\$(cls -1 ${accession}*/ | head -n 1)
-              cd dir_to_cd
+              cd ${base_path#ftp://ftp.ncbi.nlm.nih.gov}/$dir_to_cd
               cls -1 ${accession}*.gff.gz
               quit
-            " > $RAW_OUTPUT
-
-            # Process the raw output to get only full paths to .gff.gz files and print accession + path
-            awk -v acc="$accession" -v base="$base_path" '
+            " | awk -v acc="$accession" -v base="$base_path" '
                   /\.gff\.gz$/ {
                     https_base = gensub(/^ftp:\/\//, "https://", 1, base)
                     print acc "\t" https_base "/" $NF
                   }
-            ' $RAW_OUTPUT >> ncbi_all.tsv
+            ' >> ncbi_all.tsv
             
             # Remove the temporary raw output file
             rm $RAW_OUTPUT
