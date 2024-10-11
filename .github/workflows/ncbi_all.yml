@@ -14,80 +14,108 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Install NCBI Packages and lftp
+      - name: Install Dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y lftp
+          sudo apt-get update && sudo apt-get install -y lftp
           curl -O 'https://ftp.ncbi.nlm.nih.gov/pub/datasets/command-line/v2/linux-amd64/dataformat'
           curl -O 'https://ftp.ncbi.nlm.nih.gov/pub/datasets/command-line/v2/linux-amd64/datasets'
           chmod +x datasets dataformat
 
-    #- name: Environment Variables from Dotenv
-     #   uses: c-py/action-dotenv-to-setenv@v4
-        
-      - name: Retrieve Eukaryotic Genomes
+      - name: Set Environment Variables
         run: |
-          ./datasets summary genome taxon 2759 --annotated --as-json-lines |
-          ./dataformat tsv genome --fields accession >  assembly_accessions.txt
-          
-      - name: Extract Assembly Accessions and Generate FTP Paths
+          echo "TAXID=2759" >> $GITHUB_ENV
+          echo "FIELDS=accession" >> $GITHUB_ENV
+          echo "OUTPUT=ncbi.tsv" >> $GITHUB_ENV
+          echo "FTP=ftp.ncbi.nlm.nih.gov" >> $GITHUB_ENV
+          echo "FTP_URL=ftp://ftp.ncbi.nlm.nih.gov" >> $GITHUB_ENV
+          echo "DIR=/genomes/all" >> $GITHUB_ENV
+          echo "TMP=paths.tsv" >> $GITHUB_ENV
+
+      - name: Retrieve Eukaryotic Genomes and Generate FTP Paths
         run: |
-          > ncbi_gff3_paths_base.tsv
-          # Create formatted FTP paths for each assembly accession
+          # Function to initialize files
+          initialize_file() {
+            file=$1
+            header=$2
+            [[ ! -f "$file" ]] && echo -e "$header" > "$file"
+          }
+
+          # Function to generate FTP paths
+          generate_ftp_path() {
+            accession=$1
+            echo "${{env.FTP_URL}}${{env.DIR}}/${accession:0:3}/${accession:4:3}/${accession:7:3}/${accession:10:3}"
+          }
+
+          output="${{env.OUTPUT}}"
+          tmp="${{env.TMP}}"
+
+          # Initialize the output and temporary files
+          initialize_file "$output" "accession\tfull_path"
+          > "$tmp"
+
+          # Load existing accessions from the output file
+          existing_accessions=$(awk 'NR > 1 {print $1}' "$output" | sort)
+
+          # Retrieve genomes and generate FTP paths
+          ./datasets summary genome taxon "${{env.TAXID}}" --assembly-level chromosome,complete --annotated --as-json-lines |
+          ./dataformat tsv genome --fields "${{env.FIELDS}}" | tail -n +2 | head -n 10 |
           while read -r accession; do
-            # Generate the base path from the assembly accession
-            base_path="ftp://ftp.ncbi.nlm.nih.gov/genomes/all/${accession:0:3}/${accession:4:3}/${accession:7:3}/${accession:10:3}"
-            echo -e "${accession}\t${base_path}" >> ncbi_gff3_paths_base.tsv
-          done < assembly_accessions.txt
+            # Skip if accession exists
+            echo "$existing_accessions" | grep -qw "$accession" && continue
+
+            # Append new FTP paths to the temporary file
+            base_path=$(generate_ftp_path "$accession")
+            echo -e "${accession}\t${base_path}" >> "$tmp"
+          done
 
       - name: Recursively Search for .gff.gz Files on NCBI FTP
         run: |
-          # Add header to the TSV file
-          echo -e "accession\tfull_path" > ncbi_all.tsv
+          # Function to search for .gff.gz files
+          search_gff_files() {
+            accession=$1
+            base_path=$2
+            lftp -c "
+              set net:timeout 10
+              set net:max-retries 3
+              open ${{env.FTP}}
+              cd ${base_path#${{env.FTP_URL}}}
+              cls -1 ${accession}*.gff.gz
+              quit
+            "
+          }
 
-          # Loop through base FTP paths
+          tmp="${{env.TMP}}"
+          output="${{env.OUTPUT}}"
+
+          # Loop through base FTP paths and search for .gff.gz files
           while read -r accession base_path; do
-            echo "Searching in $base_path"
-            
-            # Capture the directory to change into
             dir_to_cd=$(lftp -c "
               set net:timeout 10
               set net:max-retries 3
-              open ftp.ncbi.nlm.nih.gov
-              cd ${base_path#ftp://ftp.ncbi.nlm.nih.gov}
+              open ${{env.FTP}}
+              cd ${base_path#${{env.FTP_URL}}}
               cls -1 ${accession}* | head -n 1
               quit
             ")
 
-            # If no directory is found, skip to the next accession
             [[ -z "$dir_to_cd" ]] && echo "No directory for $accession, skipping..." && continue
 
-            echo "Found directory: $dir_to_cd"            
-            # Use lftp to connect to the server and list all files in the directory
-            lftp -c "
-              set net:timeout 10
-              set net:max-retries 3
-              open ftp.ncbi.nlm.nih.gov
-              cd ${base_path#ftp://ftp.ncbi.nlm.nih.gov}/$dir_to_cd
-              cls -1 ${accession}*.gff.gz
-              quit
-            " | awk -v acc="$accession" -v base="$base_path" -v dir="$dir_to_cd" '
-                  /\.gff\.gz$/ {
-                    https_base = gensub(/^ftp:\/\//, "https://", 1, base)
-                    print acc "\t" https_base "/" dir $NF
-                  }
-            ' >> ncbi_all.tsv
+            echo "Found directory: $dir_to_cd"
             
-          done < ncbi_gff3_paths_base.tsv
+            search_gff_files "$accession" "${base_path}/${dir_to_cd}" | awk -v acc="$accession" -v base="$base_path" -v dir="$dir_to_cd" '
+              /\.gff\.gz$/ {
+                https_base = gensub(/^ftp:\/\//, "https://", 1, base)
+                print acc "\t" https_base "/" dir $NF
+              }
+            ' >> "$output"
+            
+          done < "$tmp"
 
-
-      - name: Remove intermediary files
+      - name: Remove Intermediary Files
         run: |
-          rm ncbi_gff3_paths_base.tsv
-          rm assembly_accessions.txt
-          rm datasets
-          rm dataformat
-          
+          rm "${{env.TMP}}"
+          rm datasets dataformat
+
       - name: Commit & Push changes
         uses: actions-js/push@master
         with:
