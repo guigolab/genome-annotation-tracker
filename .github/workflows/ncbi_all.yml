@@ -39,16 +39,13 @@ jobs:
           echo "NEW_ACCESSIONS=new_accessions.tsv" >> $GITHUB_ENV
           echo "DIRS=directories.txt" >> $GITHUB_ENV
 
-
           #output
           echo "OUTPUT=ncbi.tsv" >> $GITHUB_ENV
-
 
       - name: Get existing Assemblies or Initialize Output File
         run: |
 
           output="${{env.OUTPUT}}"
-          existing_accessions="${{env.EXISTING_ACCESSIONS}}"
 
           # Initialize the output file for FTP paths if it doesn't exist
           if [[ ! -f "$output" ]]; then
@@ -56,18 +53,18 @@ jobs:
           fi
 
           # Save existing accessions to a file, skipping the header
-          awk 'NR > 1 {print $1}' "$output" | sort > "$existing_accessions"
-
-          # Debug: Display the content of the existing_accessions.txt file
-          cat "$existing_accessions"
-
+          awk 'NR > 1 {print $1}' "$output" | sort > "${{env.EXISTING_ACCESSIONS}}"
 
       - name: Get new NCBI Assemblies
         run: |
-
+          
+          query_result=query_result.tsv
           ./datasets summary genome taxon "${{env.TAXID}}" --assembly-level chromosome,complete --annotated --as-json-lines |
           ./dataformat tsv genome --fields "${{env.FIELDS}}" | 
-          tail -n +2 | head -n 10 | 
+          tail -n +2 | head -n 10 > "$query_result"
+
+          head -n 10 "$query_result"
+          
           grep -vFf "${{env.EXISTING_ACCESSIONS}}" > "${{env.NEW_ACCESSIONS}}"
 
           cat ${{env.NEW_ACCESSIONS}}"
@@ -119,7 +116,7 @@ jobs:
               echo -e "${accession}\t${base_path}/${dir_to_cd}" >> "${{env.DIRS}}"
 
             done < "$pathes"
-            
+
             rm "$pathes"
 
       - name: Search for .gff.gz Files
