@@ -24,7 +24,7 @@ jobs:
               run: |
 
                 #datasets
-                fields=accession,assminfo-name,organism-name,organism-tax-id,annotinfo-name,annotinfo-method,annotinfo-featcount-gene-total,annotinfo-pipeline,annotinfo-provider,annotinfo-release-date
+                fields=accession,assminfo-name,organism-name,organism-tax-id
                 echo "FIELDS=$fields" >> $GITHUB_ENV
 
                 #input files
