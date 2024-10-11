@@ -36,7 +36,7 @@ jobs:
           #tmp files
           echo "PATHS=paths.tsv" >> $GITHUB_ENV
           echo "EXISTING_ACCESSIONS=existing_accessions.tsv" >> $GITHUB_ENV
-          echo "NEW_ACCESSIONS=new_accessions.tsv" >> $GITHUB_ENV
+          echo "NCBI_ACCESSIONS=ncbi_accessions.tsv" >> $GITHUB_ENV
           echo "DIRS=directories.txt" >> $GITHUB_ENV
 
           #output
@@ -55,44 +55,33 @@ jobs:
           # Save existing accessions to a file, skipping the header
           awk 'NR > 1 {print $1}' "$output" | sort > "${{env.EXISTING_ACCESSIONS}}"
 
-      - name: Get new NCBI Assemblies
+      - name: Get NCBI Assemblies
         run: |
           
-          # query_result=query_result.tsv
-
           ./datasets summary genome taxon "${{env.TAXID}}" --assembly-level chromosome,complete --annotated --as-json-lines |
-          ./dataformat tsv genome --fields "${{env.FIELDS}}" 
-          
-          # | 
-          # tail -n +2 | head -n 10 > "$query_result"
+          ./dataformat tsv genome --fields "${{env.FIELDS}}" | 
+          tail -n +2 | head -n 10 > "${{env.NCBI_ACCESSIONS}}"
 
-          # head -n 10 "$query_result"
-
-          # grep -vFf "${{env.EXISTING_ACCESSIONS}}" > "${{env.NEW_ACCESSIONS}}"
-
-          # cat ${{env.NEW_ACCESSIONS}}"
-
-          # rm ${{env.EXISTING_ACCESSIONS}}"
+          cat "${{env.NCBI_ACCESSIONS}}"
 
       - name: Set FTP paths
         run: |
 
           while read -r accession; do
             # Skip if accession exists
-            echo "$existing_accessions" | grep -qw "$accession" && continue
+            grep -Fwq "$accession" "${{env.EXISTING_ACCESSIONS}}" && continue
 
             # Append new FTP paths to the temporary file
             base_path="${{env.FTP_URL}}${{env.DIR}}/${accession:0:3}/${accession:4:3}/${accession:7:3}/${accession:10:3}"
             echo -e "${accession}\t${base_path}" >> "${{env.PATHS}}"
 
-          done < "${{env.NEW_ACCESSIONS}}"
+          done < "${{env.NCBI_ACCESSIONS}}"
           
-          rm "${{env.NEW_ACCESSIONS}}"
+          rm "${{env.NCBI_ACCESSIONS}}"
 
       - name: Get FTP Directories
         run: |
 
-            pathes="${{env.PATHS}}"
             # Loop through base FTP paths and capture the directories
             while read -r accession base_path; do
               echo "Searching for directory in $base_path"
@@ -118,9 +107,9 @@ jobs:
               # Save accession and directory to file
               echo -e "${accession}\t${base_path}/${dir_to_cd}" >> "${{env.DIRS}}"
 
-            done < "$pathes"
+            done < "${{env.PATHS}}"
 
-            rm "$pathes"
+            rm "${{env.PATHS}}"
 
       - name: Search for .gff.gz Files
         run: |
