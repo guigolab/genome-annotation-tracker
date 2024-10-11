@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  retrieve-gff3:
+  retrieve-ensembl-rr-gff3:
     runs-on: ubuntu-latest
 
     steps:

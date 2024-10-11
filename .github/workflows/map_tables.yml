@@ -1,0 +1,70 @@
+name: Map NCBI and Ensembl files
+
+on:
+    push:
+      branches: [ "main" ]
+
+    workflow_dispatch:
+
+jobs:
+    map-files:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v3
+    
+            - name: Install Dependencies
+              run: |
+                curl -O 'https://ftp.ncbi.nlm.nih.gov/pub/datasets/command-line/v2/linux-amd64/dataformat'
+                curl -O 'https://ftp.ncbi.nlm.nih.gov/pub/datasets/command-line/v2/linux-amd64/datasets'
+                chmod +x datasets dataformat
+    
+            - name: Set Environment Variables
+              run: |
+
+                #datasets
+                echo "FIELDS=accession,assminfo-name,organism-name,organism-taxid,annotinfo-name,annotinfo-method,annotinfo-featcount-gene-total,annotinfo-pipeline,annotinfo-provider,annotinfo-release-date" >> $GITHUB_ENV
+
+                #input files
+                echo "NCBI=ncbi.tsv" >> $GITHUB_ENV
+                echo "ENSEMBL_RR=ensembl_rapid_release.tsv" >> $GITHUB_ENV
+                #output file
+                echo "MERGED_TABLE=merged_table.tsv" >> $GITHUB_ENV
+                echo "OUTPUT=mapped_annotations.tsv" >> $GITHUB_ENV
+        
+            - name: Collect Data from TSVs
+              run: |
+                # Define the input files (two TSVs) and output file
+                input1="${{env.NCBI}}"
+                input2="${{env.ENSEMBL_RR}}"
+                output="${{env.MERGED_TABLE}}"
+            
+                # Merge two TSVs, process columns, and save to output
+                { tail -n +2 "$input1"; tail -n +2 "$input2"; } | awk -F'\t' '{
+                    # Get the accession (first column)
+                    accession = $1;
+                    
+                    # Extract the filename from the full path (second column), remove .gff.gz or .gff3.gz extension
+                    match($2, /([^\/]+)\.(gff3?|gff)\.gz$/, arr);
+                    filename = arr[1];
+            
+                    # Print accession, filename without extension, and full URL (second column)
+                    print accession "\t" filename "\t" $2;
+                }' > "$output"
+            
+                # Show the output file content for debugging purposes
+                cat "$output"
+            
+            - name: Get NCBI Assemblies Metadata
+              run: |
+
+                tmp=tmp.txt
+
+                cat "${{env.MERGED_TABLE}}" | awk -F'\t' '{print $1}' > "$tmp"
+                
+                ./datasets summary genome genome --input-file "$tmp" --as-json-lines |
+                ./dataformat tsv genome --fields "${{env.FIELDS}}" | 
+                tail -n +2 | head -n 10 > "${{env.NCBI_ACCESSIONS}}"
+
+                cat "${{env.NCBI_ACCESSIONS}}"
