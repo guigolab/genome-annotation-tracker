@@ -120,7 +120,7 @@ jobs:
                     if (accession in assembly) {  # If accession matches a line in assembly_table
                       # Print formatted output with new_annotations first column, full_path, and the rest of assembly_table
                       match(assembly[accession], /^[^\t]+\t(.+)/, arr);
-                      print $1 "\t" full_path "\t" arr[1];
+                      print $1 "\t" full_path "\t" arr[0];
                     }
                   }' "$assembly_table" "$new_annotations" >> "$existing_annotations"
               
