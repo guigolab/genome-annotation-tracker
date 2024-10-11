@@ -76,7 +76,7 @@ jobs:
             
                     # Print accession, filename without extension, and full URL (second column)
                     print filename "\t" accession "\t" $2;
-                }'| head -n 10 > "$merged_table"
+                }' > "$merged_table"
             
             - name: Filter Out Existing Annotations
               run: |
@@ -106,7 +106,6 @@ jobs:
                 ./dataformat tsv genome --fields "${{env.FIELDS}}" > "${{env.ASSEMBLY_TABLE}}"
 
                 rm "$tmp"
-                cat "${{env.ASSEMBLY_TABLE}}"
 
             - name: Insert new annotations
               run: |
@@ -122,12 +121,11 @@ jobs:
                     if (accession in assembly) {  # If accession matches a line in assembly_table
                       # Print formatted output with new_annotations first column, full_path, and the rest of assembly_table
                       match(assembly[accession], /^[^\t]+\t(.+)/, arr);
-                      print $1 "\t" full_path "\t" arr[0];
+                      print $1 "\t" arr[0] "\t" full_path;
                     }
                   }' "$assembly_table" "$new_annotations" >> "$existing_annotations"
               
                   # Display the final output for debugging purposes
-                  cat "$existing_annotations"
 
                   rm "$assembly_table"
                   rm "$new_annotations"
