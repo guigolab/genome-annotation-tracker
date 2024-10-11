@@ -58,18 +58,21 @@ jobs:
       - name: Get new NCBI Assemblies
         run: |
           
-          query_result=query_result.tsv
+          # query_result=query_result.tsv
+
           ./datasets summary genome taxon "${{env.TAXID}}" --assembly-level chromosome,complete --annotated --as-json-lines |
-          ./dataformat tsv genome --fields "${{env.FIELDS}}" | 
-          tail -n +2 | head -n 10 > "$query_result"
-
-          head -n 10 "$query_result"
+          ./dataformat tsv genome --fields "${{env.FIELDS}}" 
           
-          grep -vFf "${{env.EXISTING_ACCESSIONS}}" > "${{env.NEW_ACCESSIONS}}"
+          # | 
+          # tail -n +2 | head -n 10 > "$query_result"
 
-          cat ${{env.NEW_ACCESSIONS}}"
+          # head -n 10 "$query_result"
 
-          rm ${{env.EXISTING_ACCESSIONS}}"
+          # grep -vFf "${{env.EXISTING_ACCESSIONS}}" > "${{env.NEW_ACCESSIONS}}"
+
+          # cat ${{env.NEW_ACCESSIONS}}"
+
+          # rm ${{env.EXISTING_ACCESSIONS}}"
 
       - name: Set FTP paths
         run: |
