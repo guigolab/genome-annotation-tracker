@@ -101,7 +101,7 @@ jobs:
 
                 cat "${{env.NEW_ANNOTATIONS}}" | 
                 awk -F'\t' '{print $2}'|
-                ./datasets summary genome accession --as-json-lines |
+                ./datasets summary genome accession --inputfile --as-json-lines |
                 ./dataformat tsv genome --fields "${{env.FIELDS}}" > "${{env.ASSEMBLY_TABLE}}"
 
                 cat "${{env.ASSEMBLY_TABLE}}"
