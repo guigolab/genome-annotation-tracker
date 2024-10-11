@@ -1,8 +1,9 @@
 name: Retrieve GFF3 Paths from Ensembl RR
 
 on:
-  schedule:
-    - cron:  '0 0 * * 1'
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
@@ -15,24 +16,75 @@ jobs:
         
       - name: Install lftp
         run: sudo apt-get update && sudo apt-get install -y lftp
-        
-      - name: Make script executable
-        run: chmod +x ./scripts/ensembl_rapid_release.sh
 
-      - name: Run script to retrieve GFF3 paths
-        run: ./scripts/ensembl_rapid_release.sh
+      - name: Set Environment Variables
+        run: |
+
+          #ensembl ftp
+          echo "FTP=ftp.ensembl.org" >> $GITHUB_ENV
+          echo "FTP_URL=ftp://ftp.ensembl.org" >> $GITHUB_ENV
+          echo "DIR=/pub/rapid-release/species/" >> $GITHUB_ENV
+
+          #tmp files
+          echo "PATHS=paths.tsv" >> $GITHUB_ENV
+          echo "EXISTING_ACCESSIONS=existing_accessions.tsv" >> $GITHUB_ENV
+          echo "DIRS=directories.txt" >> $GITHUB_ENV
+          echo "SCRAPE=scrape.txt" >> $GITHUB_ENV
+
+          #output
+          echo "OUTPUT=ensembl_rapid_release.tsv" >> $GITHUB_ENV
+
+      - name: Get existing Assemblies or Initialize Output File
+        run: |
+
+          output="${{env.OUTPUT}}"
+          # Initialize the output file for FTP paths if it doesn't exist
+          if [[ ! -f "$output" ]]; then
+            echo -e "accession\tfull_path" > "$output"
+          fi
+
+          # Save existing accessions to a file, skipping the header
+          awk 'NR > 1 {print $1}' "$output" | sort > "${{env.EXISTING_ACCESSIONS}}"
+
+      - name: Scrape FTP directory
+        run: |
+
+          # Use lftp to connect to the server and list all files
+          lftp -c "
+            set net:timeout 10
+            set net:max-retries 3
+            open ${{env.FTP}}
+            cd ${{env.DIR}}
+            ls -R
+          quit
+          " > "${{env.SCRAPE}}"
+
+      - name: Filter new GFF3 paths
+        run: |
+          # Process the raw output to get only new .gff3.gz files (excluding existing accessions)
+          awk '
+            # When a directory name is printed (ends with a colon), store it
+            /:$/ {dir=substr($0, 1, length($0)-1); next}
+            # If the line contains .gff3.gz, print the full path (directory + filename)
+            /\.gff3\.gz$/ {print dir "/" $NF}
+          ' "${{env.SCRAPE}}" | grep -vFf "${{env.EXISTING_ACCESSIONS}}" > "${{env.PATHS}}"
+
+          cat "${{env.PATHS}}"
+          
+          rm "${{env.SCRAPE}}"
+          rm "${{env.EXISTING_ACCESSIONS}}"
 
       - name: Map GFF3 paths to TSV file
         run: |
+          # Map the filtered GFF3 paths to TSV file
           awk -F'/' '{
             accession = $3;
             https_path = "https://ftp.ensembl.org/pub/rapid-release/species" substr($0, 2);
             print accession "\t" https_path
-          }' gff3_paths.txt > ensembl_rapid_release.tsv
+          }' "${{env.PATHS}}" >> "${{env.OUTPUT}}"
 
-      - name: Remove txt file
-        run: |
-          rm gff3_paths.txt
+          rm "${{env.PATHS}}"
+
           
       - name: Commit & Push changes
         uses: actions-js/push@master
