@@ -78,6 +78,7 @@ jobs:
           done < "${{env.NCBI_ACCESSIONS}}"
           
           rm "${{env.NCBI_ACCESSIONS}}"
+          rm "${{env.EXISTING_ACCESSIONS}}"
 
       - name: Get FTP Directories
         run: |
@@ -136,6 +137,8 @@ jobs:
           done < "${{env.DIRS}}"
 
           rm "${{env.DIRS}}"
+          rm datasets
+          rm dataformat
 
       - name: Commit & Push changes
         uses: actions-js/push@master
