@@ -1,9 +1,8 @@
 name: Map NCBI and Ensembl files
 
 on:
-    push:
-      branches: [ "main" ]
-
+    schedule:
+      - cron:  '0 0 * * 1'
     workflow_dispatch:
 
 jobs:
