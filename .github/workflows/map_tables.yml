@@ -126,4 +126,9 @@ jobs:
               
                   # Display the final output for debugging purposes
                   cat "$existing_annotations"
-              
+
+                  
+            - name: Commit & Push changes
+              uses: actions-js/push@master
+              with:
+                github_token: ${{ secrets.GITHUB_TOKEN }}
