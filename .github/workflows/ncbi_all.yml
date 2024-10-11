@@ -23,105 +23,130 @@ jobs:
 
       - name: Set Environment Variables
         run: |
+
+          #datasets
           echo "TAXID=2759" >> $GITHUB_ENV
           echo "FIELDS=accession" >> $GITHUB_ENV
-          echo "OUTPUT=ncbi.tsv" >> $GITHUB_ENV
+
+          #ncbi ftp
           echo "FTP=ftp.ncbi.nlm.nih.gov" >> $GITHUB_ENV
           echo "FTP_URL=ftp://ftp.ncbi.nlm.nih.gov" >> $GITHUB_ENV
           echo "DIR=/genomes/all" >> $GITHUB_ENV
-          echo "TMP=paths.tsv" >> $GITHUB_ENV
 
-      - name: Retrieve Eukaryotic Genomes and Generate FTP Paths
+          #tmp files
+          echo "PATHS=paths.tsv" >> $GITHUB_ENV
+          echo "EXISTING_ACCESSIONS=existing_accessions.tsv" >> $GITHUB_ENV
+          echo "NEW_ACCESSIONS=new_accessions.tsv" >> $GITHUB_ENV
+          echo "DIRS=directories.txt" >> $GITHUB_ENV
+
+
+          #output
+          echo "OUTPUT=ncbi.tsv" >> $GITHUB_ENV
+
+
+      - name: Get existing Assemblies or Initialize Output File
         run: |
-          # Function to initialize files
-          initialize_file() {
-            file=$1
-            header=$2
-            [[ ! -f "$file" ]] && echo -e "$header" > "$file"
-          }
-
-          # Function to generate FTP paths
-          generate_ftp_path() {
-            accession=$1
-            echo "${{env.FTP_URL}}${{env.DIR}}/${accession:0:3}/${accession:4:3}/${accession:7:3}/${accession:10:3}"
-          }
 
           output="${{env.OUTPUT}}"
-          tmp="${{env.TMP}}"
+          existing_accessions="${{env.EXISTING_ACCESSIONS}}"
 
-          # Initialize the output and temporary files
-          initialize_file "$output" "accession\tfull_path"
-          > "$tmp"
+          # Initialize the output file for FTP paths if it doesn't exist
+          if [[ ! -f "$output" ]]; then
+            echo -e "accession\tfull_path" > "$output"
+          fi
 
-          # Load existing accessions from the output file
-          existing_accessions=$(awk 'NR > 1 {print $1}' "$output" | sort)
+          # Save existing accessions to a file, skipping the header
+          awk 'NR > 1 {print $1}' "$output" | sort > "$existing_accessions"
 
-          cat existing_accessions
+          # Debug: Display the content of the existing_accessions.txt file
+          cat "$existing_accessions"
 
-          # Retrieve genomes and generate FTP paths
+
+      - name: Get new NCBI Assemblies
+        run: |
+
           ./datasets summary genome taxon "${{env.TAXID}}" --assembly-level chromosome,complete --annotated --as-json-lines |
-          ./dataformat tsv genome --fields "${{env.FIELDS}}" | tail -n +2 | head -n 10 |
+          ./dataformat tsv genome --fields "${{env.FIELDS}}" | 
+          tail -n +2 | head -n 10 | 
+          grep -vFf "${{env.EXISTING_ACCESSIONS}}" > "${{env.NEW_ACCESSIONS}}"
+
+          cat ${{env.NEW_ACCESSIONS}}"
+
+          rm ${{env.EXISTING_ACCESSIONS}}"
+
+      - name: Set FTP paths
+        run: |
+
           while read -r accession; do
             # Skip if accession exists
             echo "$existing_accessions" | grep -qw "$accession" && continue
 
             # Append new FTP paths to the temporary file
-            base_path=$(generate_ftp_path "$accession")
-            echo -e "${accession}\t${base_path}" >> "$tmp"
-          done
+            base_path="${{env.FTP_URL}}${{env.DIR}}/${accession:0:3}/${accession:4:3}/${accession:7:3}/${accession:10:3}"
+            echo -e "${accession}\t${base_path}" >> "${{env.PATHS}}"
 
-          cat "$tmp"
+          done < "${{env.NEW_ACCESSIONS}}"
           
-      - name: Recursively Search for .gff.gz Files on NCBI FTP
+          rm "${{env.NEW_ACCESSIONS}}"
+
+      - name: Get FTP Directories
         run: |
-          # Function to search for .gff.gz files
-          search_gff_files() {
-            accession=$1
-            base_path=$2
+
+            pathes="${{env.PATHS}}"
+            # Loop through base FTP paths and capture the directories
+            while read -r accession base_path; do
+              echo "Searching for directory in $base_path"
+              
+              # Capture the directory to change into
+              dir_to_cd=$(lftp -c "
+                set net:timeout 10
+                set net:max-retries 3
+                open ftp.ncbi.nlm.nih.gov
+                cd ${base_path#ftp://ftp.ncbi.nlm.nih.gov}
+                cls -1 ${accession}* | head -n 1
+                quit
+              ")
+              
+              #strip @ from dirs
+              dir_to_cd=$(echo "$dir_to_cd" | sed 's/@$//')
+
+              # If no directory is found, skip to the next accession
+              [[ -z "$dir_to_cd" ]] && echo "No directory for $accession, skipping..." && continue
+
+              echo "Found directory: $dir_to_cd"
+
+              # Save accession and directory to file
+              echo -e "${accession}\t${base_path}/${dir_to_cd}" >> "${{env.DIRS}}"
+
+            done < "$pathes"
+            
+            rm "$pathes"
+
+      - name: Search for .gff.gz Files
+        run: |
+
+          # Loop through the directories and search for .gff.gz files
+          while read -r accession dir_to_cd; do
+            echo "Searching for .gff.gz files in $dir_to_cd"
+            
+            # Use lftp to connect to the server and list all files in the directory
             lftp -c "
               set net:timeout 10
               set net:max-retries 3
-              open ${{env.FTP}}
-              cd ${base_path#${{env.FTP_URL}}}
+              open ftp.ncbi.nlm.nih.gov
+              cd ${dir_to_cd#ftp://ftp.ncbi.nlm.nih.gov}
               cls -1 ${accession}*.gff.gz
               quit
-            "
-          }
-
-          tmp="${{env.TMP}}"
-          output="${{env.OUTPUT}}"
-
-          # Loop through base FTP paths and search for .gff.gz files
-          while read -r accession base_path; do
-            dir_to_cd=$(lftp -c "
-              set net:timeout 10
-              set net:max-retries 3
-              open ${{env.FTP}}
-              cd ${base_path#${{env.FTP_URL}}}
-              cls -1 ${accession}* | head -n 1
-              quit
-            ")
-
-            # Strip '@' from the directory name if it exists
-            dir_to_cd=$(echo "$dir_to_cd" | sed 's/@$//')
-
-            [[ -z "$dir_to_cd" ]] && echo "No directory for $accession, skipping..." && continue
-
-            echo "Found directory: $dir_to_cd"
-            
-            search_gff_files "$accession" "${base_path}/${dir_to_cd}" | awk -v acc="$accession" -v base="$base_path" -v dir="$dir_to_cd" '
+            " | awk -v acc="$accession" -v dir="$dir_to_cd" '
               /\.gff\.gz$/ {
-                https_base = gensub(/^ftp:\/\//, "https://", 1, base)
-                print acc "\t" https_base "/" dir $NF
+                https_base = gensub(/^ftp:\/\//, "https://", 1, dir)
+                print acc "\t" https_base "/" $NF
               }
-            ' >> "$output"
-            
-          done < "$tmp"
+            ' >> "${{env.OUTPUT}}"
+      
+          done < "${{env.DIRS}}"
 
-      - name: Remove Intermediary Files
-        run: |
-          rm "${{env.TMP}}"
-          rm datasets dataformat
+          rm "${{env.DIRS}}"
 
       - name: Commit & Push changes
         uses: actions-js/push@master
