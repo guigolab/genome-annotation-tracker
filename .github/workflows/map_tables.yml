@@ -1,8 +1,9 @@
 name: Map NCBI and Ensembl files
 
 on:
-    schedule:
-      - cron:  '0 0 * * 2'
+    push:
+      branches: [ "main" ]
+
     workflow_dispatch:
 
 jobs:
@@ -34,7 +35,7 @@ jobs:
                 echo "ASSEMBLY_TABLE=assemblies_table.tsv" >> $GITHUB_ENV
 
                 #output file header
-                header="annotation_name\t$(echo $fields | tr ',' '\t')"\tfull_path
+                header="annotation_name\t$(echo $fields | tr ',' '\t')\tfull_path"
                 echo "HEADER=$header" >> $GITHUB_ENV
 
                 #output file name
