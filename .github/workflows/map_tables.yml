@@ -24,7 +24,8 @@ jobs:
               run: |
 
                 #datasets
-                echo "FIELDS=accession,assminfo-name,organism-name,organism-tax-id,annotinfo-name,annotinfo-method,annotinfo-featcount-gene-total,annotinfo-pipeline,annotinfo-provider,annotinfo-release-date" >> $GITHUB_ENV
+                fields=accession,assminfo-name,organism-name,organism-tax-id,annotinfo-name,annotinfo-method,annotinfo-featcount-gene-total,annotinfo-pipeline,annotinfo-provider,annotinfo-release-date
+                echo "FIELDS=$fields" >> $GITHUB_ENV
 
                 #input files
                 echo "NCBI=ncbi.tsv" >> $GITHUB_ENV
@@ -33,19 +34,39 @@ jobs:
                 #assembly info
                 echo "ASSEMBLY_TABLE=assemblies_table.tsv" >> $GITHUB_ENV
 
-                #output file
-                echo "MERGED_TABLE=merged_table.tsv" >> $GITHUB_ENV
+                #output file header
+                header="annotation_name\t$(echo $fields | tr ',' '\t')"
+                echo "HEADER=$header" >> $GITHUB_ENV
+
+                #output file name
                 echo "OUTPUT=mapped_annotations.tsv" >> $GITHUB_ENV
-        
-            - name: Collect Data from TSVs
+
+                #tmp files
+                echo "MERGED_TABLE=merged_table.tsv" >> $GITHUB_ENV
+                echo "NEW_ANNOTATIONS=new_annotations.tsv" >> $GITHUB_ENV
+            
+            - name: Init Output File
               run: |
+  
+                output="${{env.OUTPUT}}"
+
+                # Initialize the output file for FTP paths if it doesn't exist
+                if [[ ! -f "$output" ]]; then
+                    echo -e "${{env.HEADER}}" > "$output"
+                fi
+
+            - name: Collect and Filter Data from TSVs
+              run: |
+
                 # Define the input files (two TSVs) and output file
-                input1="${{env.NCBI}}"
-                input2="${{env.ENSEMBL_RR}}"
-                output="${{env.MERGED_TABLE}}"
+                ncbi="${{env.NCBI}}"
+                ensembl_rr="${{env.ENSEMBL_RR}}"
+
+                #format name accession path
+                merged_table="${{env.MERGED_TABLE}}"
             
                 # Merge two TSVs, process columns, and save to output
-                { tail -n +2 "$input1"; tail -n +2 "$input2"; } | awk -F'\t' '{
+                { tail -n +2 "$ncbi"; tail -n +2 "$ensembl_rr"; } | awk -F'\t' '{
                     # Get the accession (first column)
                     accession = $1;
                     
@@ -54,18 +75,34 @@ jobs:
                     filename = arr[1];
             
                     # Print accession, filename without extension, and full URL (second column)
-                    print accession "\t" filename "\t" $2;
-                }' > "$output"
+                    print filename "\t" accession "\t" $2;
+                }'| head -n 10 > "$merged_table"
             
-            - name: Get NCBI Assemblies Metadata
+            - name: Filter Out Existing Annotations
+              run: |
+                new_annotations="${{env.NEW_ANNOTATIONS}}"
+                merged_table="${{env.MERGED_TABLE}}"
+                existing_annotations="${{env.OUTPUT}}"
+  
+                awk 'NR==FNR {if (FNR > 1) exclude[$1]; next} FNR > 1 && !($1 in exclude)' "$existing_annotations" "$merged_table" > "$new_annotations"              
+                
+                # Check if the output file is empty
+                if [ ! -s "$new_annotations" ]; then
+                    echo "Output file is empty. Exiting..."
+                    exit 0
+                fi
+                
+                cat "$new_annotations"
+
+            - name: Get New Assemblies NCBI Metadata
               run: |
 
                 tmp=tmp.txt
 
-                cat "${{env.MERGED_TABLE}}" | awk -F'\t' '{print $1}' > "$tmp"
-                
-                ./datasets summary genome accession --inputfile "$tmp" --as-json-lines |
-                ./dataformat tsv genome --fields "${{env.FIELDS}}" | 
-                tail -n +2 | head -n 10 > "${{env.ASSEMBLY_TABLE}}"
+                cat "${{env.NEW_ANNOTATIONS}}" | 
+                awk -F'\t' '{print $2}'|
+                ./datasets summary genome accession --as-json-lines |
+                ./dataformat tsv genome --fields "${{env.FIELDS}}" > "${{env.ASSEMBLY_TABLE}}"
 
                 cat "${{env.ASSEMBLY_TABLE}}"
+
