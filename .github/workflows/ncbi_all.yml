@@ -98,6 +98,9 @@ jobs:
               quit
             ")
 
+            # Strip '@' from the directory name if it exists
+            dir_to_cd=$(echo "$dir_to_cd" | sed 's/@$//')
+
             [[ -z "$dir_to_cd" ]] && echo "No directory for $accession, skipping..." && continue
 
             echo "Found directory: $dir_to_cd"
