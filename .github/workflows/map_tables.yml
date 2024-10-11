@@ -24,7 +24,7 @@ jobs:
               run: |
 
                 #datasets
-                echo "FIELDS=accession,assminfo-name,organism-name,organism-taxid,annotinfo-name,annotinfo-method,annotinfo-featcount-gene-total,annotinfo-pipeline,annotinfo-provider,annotinfo-release-date" >> $GITHUB_ENV
+                echo "FIELDS=accession,assminfo-name,organism-name,organism-tax-id,annotinfo-name,annotinfo-method,annotinfo-featcount-gene-total,annotinfo-pipeline,annotinfo-provider,annotinfo-release-date" >> $GITHUB_ENV
 
                 #input files
                 echo "NCBI=ncbi.tsv" >> $GITHUB_ENV
