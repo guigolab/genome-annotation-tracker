@@ -92,7 +92,7 @@ jobs:
                     exit 0
                 fi
                 
-                cat "$new_annotations"
+                rm "$merged_table"
 
             - name: Get New Assemblies NCBI Metadata
               run: |
@@ -101,9 +101,11 @@ jobs:
 
                 cat "${{env.NEW_ANNOTATIONS}}" | 
                 awk -F'\t' '{print $2}' > "$tmp"
+
                 ./datasets summary genome accession --inputfile "$tmp" --as-json-lines |
                 ./dataformat tsv genome --fields "${{env.FIELDS}}" > "${{env.ASSEMBLY_TABLE}}"
 
+                rm "$tmp"
                 cat "${{env.ASSEMBLY_TABLE}}"
 
             - name: Insert new annotations
@@ -127,7 +129,11 @@ jobs:
                   # Display the final output for debugging purposes
                   cat "$existing_annotations"
 
-                  
+                  rm "$assembly_table"
+                  rm "$new_annotations"
+                  rm datasets
+                  rm dataformat
+
             - name: Commit & Push changes
               uses: actions-js/push@master
               with:
