@@ -29,6 +29,10 @@ jobs:
                 #input files
                 echo "NCBI=ncbi.tsv" >> $GITHUB_ENV
                 echo "ENSEMBL_RR=ensembl_rapid_release.tsv" >> $GITHUB_ENV
+
+                #assembly info
+                echo "ASSEMBLY_TABLE=assemblies_table.tsv" >> $GITHUB_ENV
+
                 #output file
                 echo "MERGED_TABLE=merged_table.tsv" >> $GITHUB_ENV
                 echo "OUTPUT=mapped_annotations.tsv" >> $GITHUB_ENV
@@ -62,6 +66,6 @@ jobs:
                 
                 ./datasets summary genome accession --inputfile "$tmp" --as-json-lines |
                 ./dataformat tsv genome --fields "${{env.FIELDS}}" | 
-                tail -n +2 | head -n 10 > "${{env.NCBI_ACCESSIONS}}"
+                tail -n +2 | head -n 10 > "${{env.ASSEMBLY_TABLE}}"
 
-                cat "${{env.NCBI_ACCESSIONS}}"
+                cat "${{env.ASSEMBLY_TABLE}}"
