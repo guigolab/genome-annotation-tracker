@@ -56,6 +56,8 @@ jobs:
           # Load existing accessions from the output file
           existing_accessions=$(awk 'NR > 1 {print $1}' "$output" | sort)
 
+          cat existing_accessions
+
           # Retrieve genomes and generate FTP paths
           ./datasets summary genome taxon "${{env.TAXID}}" --assembly-level chromosome,complete --annotated --as-json-lines |
           ./dataformat tsv genome --fields "${{env.FIELDS}}" | tail -n +2 | head -n 10 |
@@ -68,6 +70,8 @@ jobs:
             echo -e "${accession}\t${base_path}" >> "$tmp"
           done
 
+          cat "$tmp"
+          
       - name: Recursively Search for .gff.gz Files on NCBI FTP
         run: |
           # Function to search for .gff.gz files
