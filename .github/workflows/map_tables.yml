@@ -35,7 +35,7 @@ jobs:
                 echo "ASSEMBLY_TABLE=assemblies_table.tsv" >> $GITHUB_ENV
 
                 #output file header
-                header="annotation_name\t$(echo $fields | tr ',' '\t')"
+                header="annotation_name\tfull_path\t$(echo $fields | tr ',' '\t')"
                 echo "HEADER=$header" >> $GITHUB_ENV
 
                 #output file name
@@ -106,3 +106,24 @@ jobs:
 
                 cat "${{env.ASSEMBLY_TABLE}}"
 
+            - name: Insert new annotations
+              run: |
+
+                  new_annotations="${{env.NEW_ANNOTATIONS}}"
+                  existing_annotations="${{env.OUTPUT}}"
+                  assembly_table="${{env.ASSEMBLY_TABLE}}"
+
+                  # Process new annotations
+                  awk 'NR==FNR {if (FNR > 1) assembly[$1] = $0; next} FNR > 1 {
+                    accession = $2;  # Get the second column (accession) from new_annotations
+                    full_path = $3;  # Get the third column (full path) from new_annotations
+                    if (accession in assembly) {  # If accession matches a line in assembly_table
+                      # Print formatted output with new_annotations first column, full_path, and the rest of assembly_table
+                      match(assembly[accession], /^[^\t]+\t(.+)/, arr);
+                      print $1 "\t" full_path "\t" arr[1];
+                    }
+                  }' "$assembly_table" "$new_annotations" >> "$existing_annotations"
+              
+                  # Display the final output for debugging purposes
+                  cat "$existing_annotations"
+              
