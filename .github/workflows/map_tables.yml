@@ -63,7 +63,7 @@ jobs:
 
                 cat "${{env.MERGED_TABLE}}" | awk -F'\t' '{print $1}' > "$tmp"
                 
-                ./datasets summary genome genome --input-file "$tmp" --as-json-lines |
+                ./datasets summary genome genome --inputfile "$tmp" --as-json-lines |
                 ./dataformat tsv genome --fields "${{env.FIELDS}}" | 
                 tail -n +2 | head -n 10 > "${{env.NCBI_ACCESSIONS}}"
 
