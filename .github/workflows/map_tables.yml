@@ -88,7 +88,7 @@ jobs:
                 
                 # Check if the output file is empty
                 if [ ! -s "$new_annotations" ]; then
-                    echo "Output file is empty. Exiting..."
+                    echo "Output file is empty. Exiting.."
                     exit 0
                 fi
                 
