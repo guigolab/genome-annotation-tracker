@@ -68,10 +68,14 @@ jobs:
             /\.gff3\.gz$/ {print dir "/" $NF}
           ' "${{env.SCRAPE}}" | grep -vFf "${{env.EXISTING_ACCESSIONS}}" > "${{env.PATHS}}"
 
-          cat "${{env.PATHS}}"
-
           rm "${{env.SCRAPE}}"
           rm "${{env.EXISTING_ACCESSIONS}}"
+
+          # Check if the output file is empty
+          if [ ! -s "${{env.PATHS}}" ]; then
+              echo "Any new path found. Exiting.."
+              exit 0
+          fi
 
       - name: Map GFF3 paths to TSV file
         run: |

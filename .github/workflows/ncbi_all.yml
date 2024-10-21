@@ -109,6 +109,11 @@ jobs:
               echo -e "${accession}\t${base_path}/${dir_to_cd}" >> "${{env.DIRS}}"
 
             done < "${{env.PATHS}}"
+                      # Check if the output file is empty
+            if [ ! -s "${{env.PATHS}}" ]; then
+                echo "Any new path found. Exiting.."
+                exit 0
+            fi
 
             rm "${{env.PATHS}}"
 
