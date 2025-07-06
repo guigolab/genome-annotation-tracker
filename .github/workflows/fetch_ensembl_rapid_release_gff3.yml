@@ -1,0 +1,153 @@
+name: Fetch Ensembl Rapid Release GFF3 Files
+
+on:
+  schedule:
+    - cron: '0 0 * * 6'  # Run weekly on Saturdays
+  workflow_dispatch:
+
+jobs:
+  fetch-gff3:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lftp jq curl
+
+      - name: Set Environment Variables
+        run: |
+          echo "FTP_SERVER=ftp.ensembl.org" >> $GITHUB_ENV
+          echo "BASE_PATH=/pub/rapid-release/species" >> $GITHUB_ENV
+          echo "OUTPUT_FILE=ensembl_rapid_release.tsv" >> $GITHUB_ENV
+          echo "TEMP_JSON=temp_species.json" >> $GITHUB_ENV
+          echo "SPECIES_JSON_URL=https://ftp.ensembl.org/pub/rapid-release/species_metadata.json" >> $GITHUB_ENV
+          echo "EXISTING_ACCESSIONS=existing_accessions.txt" >> $GITHUB_ENV
+          echo "NEW_PATHS=new_paths.tsv" >> $GITHUB_ENV
+
+      - name: Initialize Output File
+        run: |
+          # Create output file with header if it doesn't exist
+          if [[ ! -f "${{env.OUTPUT_FILE}}" ]]; then
+            echo -e "accession\tfull_path" > "${{env.OUTPUT_FILE}}"
+          fi
+
+      - name: Get Existing Accessions
+        run: |
+          # Extract existing accessions from the output file (skip header)
+          if [[ -f "${{env.OUTPUT_FILE}}" ]]; then
+            awk 'NR > 1 {print $1}' "${{env.OUTPUT_FILE}}" | sort > "${{env.EXISTING_ACCESSIONS}}"
+            echo "Found $(wc -l < "${{env.EXISTING_ACCESSIONS}}") existing accessions"
+          else
+            touch "${{env.EXISTING_ACCESSIONS}}"
+            echo "No existing accessions found"
+          fi
+
+      - name: Fetch Species Metadata JSON
+        run: |
+          # Try to fetch from URL first, then fall back to local files
+          if [[ -n "${{ env.SPECIES_JSON_URL }}" ]]; then
+            echo "Fetching species metadata from: ${{ env.SPECIES_JSON_URL }}"
+            curl -s "${{ env.SPECIES_JSON_URL }}" > "${{env.TEMP_JSON}}"
+            if [[ $? -eq 0 && -s "${{env.TEMP_JSON}}" ]]; then
+              echo "Successfully fetched from URL"
+            else
+              echo "Failed to fetch from URL, trying local files"
+              rm -f "${{env.TEMP_JSON}}"
+            fi
+          fi
+          
+          # Fall back to local files if URL fetch failed or not configured
+          if [[ ! -f "${{env.TEMP_JSON}}" ]]; then
+            if [[ -f "species_metadata.json" ]]; then
+              cp species_metadata.json "${{env.TEMP_JSON}}"
+              echo "Using local species_metadata.json file"
+            elif [[ -f "assemblies.json" ]]; then
+              cp assemblies.json "${{env.TEMP_JSON}}"
+              echo "Using local assemblies.json file"
+            else
+              echo "No JSON source found. Please configure SPECIES_JSON_URL or add a local JSON file."
+              exit 1
+            fi
+          fi
+          
+          echo "Fetched $(jq length "${{env.TEMP_JSON}}") species records"
+
+      - name: Filter and Process Species
+        run: |
+          # Initialize file for new paths
+          echo -e "accession\tfull_path" > "${{env.NEW_PATHS}}"
+          
+          # Process each species from the JSON
+          jq -c '.[]' "${{env.TEMP_JSON}}" | while read -r species_data; do
+            # Extract fields from JSON
+            assembly_accession=$(echo "$species_data" | jq -r '.assembly_accession')
+            species_name=$(echo "$species_data" | jq -r '.species')
+            
+            # Skip if assembly accession is empty or null
+            if [[ "$assembly_accession" == "null" || -z "$assembly_accession" ]]; then
+              echo "Skipping record with null/empty assembly_accession"
+              continue
+            fi
+            
+            # Check if accession already exists
+            if grep -q "^$assembly_accession$" "${{env.EXISTING_ACCESSIONS}}"; then
+              echo "Skipping $assembly_accession (already exists)"
+              continue
+            fi
+            
+            # Convert species name to format with underscores
+            species_formatted=$(echo "$species_name" | tr ' ' '_')
+            
+            # Build the expected directory path
+            expected_path="${{env.BASE_PATH}}/$species_formatted/$assembly_accession"
+            
+            echo "Checking path: $expected_path for assembly: $assembly_accession"
+            
+            # Check if directory exists and look for GFF3 files
+            lftp_output=$(lftp -e "set ssl:verify-certificate no; find $expected_path | grep -E '\\.gff3?\\.gz$'; bye" ${{env.FTP_SERVER}} 2>/dev/null)
+            
+            if [[ $? -eq 0 && -n "$lftp_output" ]]; then
+              echo "  Found GFF3 files:"
+              echo "$lftp_output" | while read -r gff3_path; do
+                # The lftp output contains relative path, just prepend the HTTPS base URL
+                full_https_path="https://${{env.FTP_SERVER}}$gff3_path"
+                
+                echo "    $assembly_accession -> $full_https_path"
+                echo -e "$assembly_accession\t$full_https_path" >> "${{env.NEW_PATHS}}"
+              done
+            else
+              echo "  No GFF3 files found or directory does not exist"
+            fi
+          done
+
+      - name: Update Output File
+        run: |
+          # Check if we found any new paths
+          if [[ $(wc -l < "${{env.NEW_PATHS}}") -gt 1 ]]; then
+            new_count=$(($(wc -l < "${{env.NEW_PATHS}}") - 1))
+            echo "Found $new_count new GFF3 paths"
+            
+            # Append new paths to output file (skip header)
+            tail -n +2 "${{env.NEW_PATHS}}" >> "${{env.OUTPUT_FILE}}"
+            
+            echo "Updated ${{env.OUTPUT_FILE}} with new paths"
+            
+            # Show summary of new additions
+            echo "New paths added:"
+            tail -n +2 "${{env.NEW_PATHS}}"
+          else
+            echo "No new GFF3 paths found"
+          fi
+
+      - name: Clean Up
+        run: |
+          rm -f "${{env.TEMP_JSON}}" "${{env.EXISTING_ACCESSIONS}}" "${{env.NEW_PATHS}}"
+
+      - name: Commit and Push Changes
+        uses: actions-js/push@master
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }} 

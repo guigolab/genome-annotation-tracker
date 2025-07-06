@@ -17,9 +17,20 @@ jobs:
       - name: Install Dependencies
         run: |
           sudo apt-get update && sudo apt-get install -y lftp
-          curl -O 'https://ftp.ncbi.nlm.nih.gov/pub/datasets/command-line/v2/linux-amd64/dataformat'
-          curl -O 'https://ftp.ncbi.nlm.nih.gov/pub/datasets/command-line/v2/linux-amd64/datasets'
+          
+          # Download NCBI datasets tools
+          echo "Downloading NCBI datasets tools..."
+          curl -f -O 'https://ftp.ncbi.nlm.nih.gov/pub/datasets/command-line/v2/linux-amd64/dataformat' || {
+            echo "Error: Failed to download dataformat"
+            exit 1
+          }
+          curl -f -O 'https://ftp.ncbi.nlm.nih.gov/pub/datasets/command-line/v2/linux-amd64/datasets' || {
+            echo "Error: Failed to download datasets"
+            exit 1
+          }
+          
           chmod +x datasets dataformat
+          echo "Successfully downloaded and made executable: datasets, dataformat"
 
       - name: Set Environment Variables
         run: |
@@ -53,23 +64,56 @@ jobs:
           fi
 
           # Save existing accessions to a file, skipping the header
-          awk 'NR > 1 {print $1}' "$output" | sort > "${{env.EXISTING_ACCESSIONS}}"
+          if [[ -f "$output" ]]; then
+            awk 'NR > 1 {print $1}' "$output" | sort > "${{env.EXISTING_ACCESSIONS}}"
+            echo "Found $(wc -l < "${{env.EXISTING_ACCESSIONS}}") existing accessions"
+          else
+            touch "${{env.EXISTING_ACCESSIONS}}"
+            echo "No existing accessions found"
+          fi
 
       - name: Get NCBI Assemblies
         run: |
+          
+          # Check if datasets command exists and is executable
+          if [[ ! -x "./datasets" ]] || [[ ! -x "./dataformat" ]]; then
+            echo "Error: datasets or dataformat not found or not executable"
+            exit 1
+          fi
           
           ./datasets summary genome taxon "${{env.TAXID}}" --assembly-level chromosome,complete --annotated --as-json-lines |
           ./dataformat tsv genome --fields "${{env.FIELDS}}" | 
           tail -n +2 > "${{env.NCBI_ACCESSIONS}}"
 
-          cat "${{env.NCBI_ACCESSIONS}}"
+          # Check if we got any accessions
+          if [[ ! -s "${{env.NCBI_ACCESSIONS}}" ]]; then
+            echo "Warning: No accessions found from NCBI datasets"
+          else
+            echo "Found $(wc -l < "${{env.NCBI_ACCESSIONS}}") accessions from NCBI"
+            head -5 "${{env.NCBI_ACCESSIONS}}"
+          fi
 
       - name: Set FTP paths
         run: |
 
+          # Initialize paths file
+          echo -e "accession\tbase_path" > "${{env.PATHS}}"
+          
           while read -r accession; do
+            # Skip if accession is empty
+            [[ -z "$accession" ]] && continue
+            
             # Skip if accession exists
-            grep -Fwq "$accession" "${{env.EXISTING_ACCESSIONS}}" && continue
+            if grep -Fwq "$accession" "${{env.EXISTING_ACCESSIONS}}"; then
+              echo "Skipping existing accession: $accession"
+              continue
+            fi
+
+            # Validate accession format (should be like GCA_000001405.1)
+            if [[ ! "$accession" =~ ^GCA_[0-9]{9}\.[0-9]+$ ]]; then
+              echo "Warning: Skipping invalid accession format: $accession"
+              continue
+            fi
 
             # Append new FTP paths to the temporary file
             base_path="${{env.FTP_URL}}${{env.DIR}}/${accession:0:3}/${accession:4:3}/${accession:7:3}/${accession:10:3}"
@@ -77,71 +121,67 @@ jobs:
 
           done < "${{env.NCBI_ACCESSIONS}}"
           
+          # Check if we have any new paths
+          if [[ $(wc -l < "${{env.PATHS}}") -le 1 ]]; then
+            echo "No new accessions to process"
+            exit 0
+          fi
+          
+          echo "Processing $(($(wc -l < "${{env.PATHS}}") - 1)) new accessions"
+          
           rm "${{env.NCBI_ACCESSIONS}}"
           rm "${{env.EXISTING_ACCESSIONS}}"
-
-      - name: Get FTP Directories
-        run: |
-
-            # Loop through base FTP paths and capture the directories
-            while read -r accession base_path; do
-              echo "Searching for directory in $base_path"
-              
-              # Capture the directory to change into
-              dir_to_cd=$(lftp -c "
-                set net:timeout 10
-                set net:max-retries 3
-                open ftp.ncbi.nlm.nih.gov
-                cd ${base_path#ftp://ftp.ncbi.nlm.nih.gov}
-                cls -1 ${accession}* | head -n 1
-                quit
-              ")
-              
-              #strip @ from dirs
-              dir_to_cd=$(echo "$dir_to_cd" | sed 's/@$//')
-
-              # If no directory is found, skip to the next accession
-              [[ -z "$dir_to_cd" ]] && echo "No directory for $accession, skipping..." && continue
-
-              echo "Found directory: $dir_to_cd"
-
-              # Save accession and directory to file
-              echo -e "${accession}\t${base_path}/${dir_to_cd}" >> "${{env.DIRS}}"
-
-            done < "${{env.PATHS}}"
-                      # Check if the output file is empty
-            if [ ! -s "${{env.PATHS}}" ]; then
-                echo "Any new path found. Exiting.."
-                exit 0
-            fi
-
-            rm "${{env.PATHS}}"
 
       - name: Search for .gff.gz Files
         run: |
 
-          # Loop through the directories and search for .gff.gz files
-          while read -r accession dir_to_cd; do
-            echo "Searching for .gff.gz files in $dir_to_cd"
+          # Get initial line count to track new additions
+          initial_lines=$(wc -l < "${{env.OUTPUT}}" 2>/dev/null || echo 0)
+
+          # Loop through base FTP paths and find GFF files directly (skip header)
+          tail -n +2 "${{env.PATHS}}" | while read -r accession base_path; do
+            echo "Searching for GFF files in $base_path for accession: $accession"
             
-            # Use lftp to connect to the server and list all files in the directory
-            lftp -c "
+            # Use lftp to connect once and find all gff.gz files recursively
+            lftp_output=$(lftp -c "
               set net:timeout 10
               set net:max-retries 3
               open ftp.ncbi.nlm.nih.gov
-              cd ${dir_to_cd#ftp://ftp.ncbi.nlm.nih.gov}
-              cls -1 ${accession}*.gff.gz
+              cd ${base_path#ftp://ftp.ncbi.nlm.nih.gov}
+              find . | grep '\.gff\.gz$'
               quit
-            " | awk -v acc="$accession" -v dir="$dir_to_cd" '
-              /\.gff\.gz$/ {
-                https_base = gensub(/^ftp:\/\//, "https://", 1, dir)
-                print acc "\t" https_base "/" $NF
-              }
-            ' >> "${{env.OUTPUT}}"
+            " 2>/dev/null)
+            
+            if [[ -n "$lftp_output" ]]; then
+              echo "  Found GFF files:"
+              # Process each GFF file found
+              while read -r gff_file; do
+                # Convert FTP URL to HTTPS and build full path
+                https_base=$(echo "$base_path" | sed 's|^ftp://|https://|')
+                # Remove leading ./ from find output and combine with base path
+                clean_path=$(echo "$gff_file" | sed 's|^\./||')
+                full_path="$https_base/$clean_path"
+                echo "    $accession -> $full_path"
+                echo -e "$accession\t$full_path" >> "${{env.OUTPUT}}"
+              done <<< "$lftp_output"
+            else
+              echo "  No GFF files found for $accession"
+            fi
       
-          done < "${{env.DIRS}}"
+          done
 
-          rm "${{env.DIRS}}"
+          # Show summary of what was added
+          if [[ -f "${{env.OUTPUT}}" ]]; then
+            final_lines=$(wc -l < "${{env.OUTPUT}}")
+            new_lines=$((final_lines - initial_lines))
+            if [[ $new_lines -gt 0 ]]; then
+              echo "Added $new_lines new GFF paths to ${{env.OUTPUT}}"
+            else
+              echo "No new GFF paths found"
+            fi
+          fi
+
+          rm "${{env.PATHS}}"
           rm datasets
           rm dataformat
 
