@@ -50,7 +50,7 @@ jobs:
         python ncbi.py genbank
       env:
         TAXON_ID: "2759"  # Eukaryotes
-    
+        GENBANK_OUTPUT_FILE: "../data/genbank_annotations.tsv"
     - name: Check for changes
       id: check-changes
       run: |

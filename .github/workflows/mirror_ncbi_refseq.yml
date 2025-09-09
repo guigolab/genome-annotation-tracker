@@ -50,7 +50,7 @@ jobs:
         python ncbi.py refseq
       env:
         TAXON_ID: "2759"  # Eukaryotes
-    
+        REFSEQ_OUTPUT_FILE: "../data/refseq_annotations.tsv"
     - name: Check for changes
       id: check-changes
       run: |

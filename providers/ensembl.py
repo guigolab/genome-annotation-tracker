@@ -10,7 +10,7 @@ TAXON_ID = os.getenv("TAXON_ID", "2759")
 ENSEMBL_FTP_DIR = "https://ftp.ebi.ac.uk/pub/ensemblorganisms"
 SPECIES_URL= f"{ENSEMBL_FTP_DIR}/species.json"
 TMP_DIR = "tmp"
-OUTPUT_FILE = "data/ensembl_annotations.tsv"
+OUTPUT_FILE = os.getenv("OUTPUT_FILE", "data/ensembl_annotations.tsv")
 
 def mirror_ensembl_annotations():
     """

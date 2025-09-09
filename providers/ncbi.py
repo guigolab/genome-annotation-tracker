@@ -8,14 +8,16 @@ from tools import file_handler, async_ops, helper
 from datetime import datetime
 # Environment variables
 TAXON_ID = os.getenv("TAXON_ID", "2759")
+GENBANK_OUTPUT_FILE = os.getenv("GENBANK_OUTPUT_FILE", "data/genbank_annotations.tsv")
+REFSEQ_OUTPUT_FILE = os.getenv("REFSEQ_OUTPUT_FILE", "data/refseq_annotations.tsv")
 
 NCBI_MAPPER = {
     "genbank":{
-        "output_file": "data/genbank_annotations.tsv",
+        "output_file": GENBANK_OUTPUT_FILE,
         "db_name": "GenBank",
     },
     "refseq":{
-        "output_file": "data/refseq_annotations.tsv",
+        "output_file": REFSEQ_OUTPUT_FILE,
         "db_name": "RefSeq",
     },
 }
