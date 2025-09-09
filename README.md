@@ -2,86 +2,80 @@
 
 # Genome Annotation Tracker
 
-The **Genome Annotation Tracker** is a tool designed to track and map eukaryotic genome annotations from both the NCBI and Ensembl databases. It provides a method to retrieve and organize genome assembly annotations, making it easier to monitor and analyze genomic data from different sources. This repository automates the collection and mapping of genome annotation data and includes important files containing genome assembly information and mappings.
-
-## Table of Contents
-
-- [Overview](#overview)
-- [Files](#files)
-- [Pipeline](#pipeline)
-- [Installation](#installation)
-- [Usage](#usage)
-- [Contributing](#contributing)
-- [License](#license)
+The **Genome Annotation Tracker** is an automated system designed to track and mirror eukaryotic genome annotations from major biological databases. It provides a comprehensive method to retrieve, organize, and maintain up-to-date genome assembly annotations from NCBI (RefSeq and GenBank) and Ensembl databases. This repository automates the collection and mapping of genome annotation data with scheduled updates and change detection.
 
 ## Overview
 
-This repository tracks eukaryotic genome annotations from two major sources:
+This repository provides an automated system for tracking eukaryotic genome annotations from three major sources:
 
-- **NCBI**: The National Center for Biotechnology Information, which provides eukaryotic genome assemblies at the chromosome or complete genome level.
-- **Ensembl**: The Ensembl Rapid Release server, which provides genome assemblies and annotations from species across the tree of life.
+- **NCBI RefSeq**: Curated, non-redundant reference sequences with high-quality annotations
+- **NCBI GenBank**: Comprehensive collection of all publicly available DNA sequences
+- **Ensembl**: Rapid release and curated annotations from species across the tree of life
 
-The project merges genome annotations from both NCBI and Ensembl, providing users with a comprehensive table containing the species information and the NCBI taxonomic identifier for each genome.
+## Features
 
-## Files
+- **Automated Mirroring**: Scheduled workflows that automatically fetch and update annotation files
+- **Change Detection**: Only processes and commits files when actual changes are detected
+- **Metadata Tracking**: Captures annotation provider, pipeline information, and submission dates
 
-The repository contains three key TSV (Tab-Separated Values) files:
 
-1. **ensembl_rapid_release.tsv**:
-   - Contains genome assembly accessions and full paths to the corresponding genome annotations from the Ensembl Rapid Release server.
-   - Columns:
-     - `accession`: The Ensembl assembly accession.
-     - `full_path`: The URL path to the annotation file on the Ensembl FTP server.
+## Data Sources
 
-2. **ncbi.tsv**:
-   - Contains all eukaryotic genome assemblies from NCBI with assembly levels of chromosome or complete genome.
-   - Columns:
-     - `accession`: The NCBI assembly accession.
-     - `full_path`: The URL path to the annotation file on the NCBI FTP server.
+### NCBI RefSeq
+- **Source**: National Center for Biotechnology Information RefSeq database
+- **Format**: GFF3 files
+- **Update Frequency**: Weekly (Mondays)
+- **Assembly Level**: Chromosome and complete genome level assemblies
+- **Taxon Focus**: Eukaryotes (TaxID: 2759)
 
-3. **mapped_annotations.tsv**:
-   - This file results from mapping the genome annotations between Ensembl and NCBI. It contains genome assembly annotations from both sources along with species and taxonomic information.
-   - Columns:
-     - `annotation_name`: The name of the annotation file.
-     - `full_path`: The full path to the genome annotation (from either NCBI or Ensembl).
-     - `accession`: The NCBI or Ensembl assembly accession.
-     - `organism-name`: The species name.
-     - `organism-tax-id`: The NCBI taxonomic identifier (TaxID).
+### NCBI GenBank
+- **Source**: National Center for Biotechnology Information GenBank database
+- **Format**: GFF3 files
+- **Update Frequency**: Weekly (Tuesdays)
+- **Assembly Level**: Chromosome and complete genome level assemblies
+- **Taxon Focus**: Eukaryotes (TaxID: 2759)
 
-## Installation
+### Ensembl
+- **Source**: Ensembl Rapid Release server
+- **Format**: GFF3 files
+- **Update Frequency**: Weekly (Sundays)
+- **Assembly Level**: All available assemblies
+- **Taxon Focus**: Eukaryotes (TaxID: 2759)
 
-To run the Genome Annotation Tracker locally, ensure you have the following dependencies installed:
+## Output Files
 
-- `curl`: For fetching data from the NCBI and Ensembl servers.
-- `awk`: Used for processing and filtering data in the TSV files.
+The system generates three main annotation files in the `data/` directory:
 
-1. Clone this repository:
+### 1. `refseq_annotations.tsv`
+Contains NCBI RefSeq annotations with the following columns:
+- `assembly_accession`: NCBI assembly accession
+- `assembly_name`: Assembly name
+- `taxon_id`: NCBI taxonomic identifier
+- `organism_name`: Scientific name of the organism
+- `source_database`: "RefSeq"
+- `annotation_provider`: Annotation provider 
+- `access_url`: Direct URL to the annotation file
+- `file_format`: "gff"
+- `release_date`: Date when the annotation was released
+- `retrieval_date`: Date when the annotation was retrieved
+- `pipeline_name`: Name of the annotation pipeline if any
+- `pipeline_method`: Method used for annotation if any
+- `pipeline_version`: Version of the annotation pipeline if any
+- `last_modified_date`: Last modification date of the file
+- `md5_checksum`:  MD5 checksum of the uncompressed file for integrity verification
 
-```bash
-git clone https://github.com/yourusername/genome-annotation-tracker.git
-cd genome-annotation-tracker
-```
+### 2. `genbank_annotations.tsv`
+Contains NCBI GenBank annotations with the same structure as RefSeq annotations.
 
-## Usage
+### 3. `ensembl_annotations.tsv`
+Contains Ensembl annotations with the same structure as NCBI annotations.
 
-Once you have cloned the repository activate github actions and run the data retrieval and mapping pipeline. 
+## Automated Workflows
 
-For example, to retrieve genome assemblies and generate the `mapped_annotations.tsv`, you can follow these steps:
+The repository includes GitHub Actions workflows that automatically maintain the annotation files:
 
-1. **Retrieve NCBI genome assembly information**:
+### Scheduled Workflows
+- **Ensembl**: Runs every Sunday at 2 AM UTC
+- **NCBI RefSeq**: Runs every Monday at 3 AM UTC  
+- **NCBI GenBank**: Runs every Tuesday at 3 AM UTC
 
-   Run the provided scripts or workflows to gather the latest eukaryotic genome annotations from NCBI.
-
-2. **Retrieve Ensembl genome assembly information**:
-
-   Use the Ensembl Rapid Release data provided in `ensembl_rapid_release.tsv`.
-
-3. **Map the annotations**:
-
-   Merge the two datasets into `mapped_annotations.tsv` by mapping species and taxonomy information.
-
-## Contributing
-
-Contributions are welcome! If you want to add features or fix bugs, please submit a pull request.
-
----

@@ -192,7 +192,7 @@ def _create_annotation(
         "assembly_name": assembly_name,
         "taxon_id": taxon_id,
         "organism_name": organism_name,
-        "source_database": "ensembl",
+        "source_database": "Ensembl",
         "annotation_provider": provider_name,
         "access_url": access_url,
         "file_format": "gff",
