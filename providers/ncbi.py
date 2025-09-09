@@ -29,7 +29,7 @@ def mirror_ncbi_annotations(db_source: str) -> list[dict]:
         print(f"Error: {db_source} is not a valid database source, must be one of {NCBI_MAPPER.keys()}")
         return
 
-    existing_annotations_dict = file_handler.load_annotations(db_map["output_file"])
+    existing_annotations_dict = file_handler.load_annotations(db_map["output_file"], "assembly_accession")
     print(f"Found {len(existing_annotations_dict)} existing annotations")
 
     parsed_annotations_dict = fetch_and_parse_ncbi_annotated_assemblies(TAXON_ID, db_map["db_name"])

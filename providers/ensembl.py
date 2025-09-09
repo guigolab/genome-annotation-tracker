@@ -22,17 +22,19 @@ def mirror_ensembl_annotations():
     parsed_annotations_dict = parse_annotations(species_path, accessions)
 
     annotations_to_keep = helper.keep_recent_annotations(existing_annotations_dict, parsed_annotations_dict)
+    print(f"Found {len(annotations_to_keep)} annotations to keep")
     last_modified_dates = asyncio.run(
                                         async_ops.check_last_modified_date_many(
                                             helper.get_tuples_to_check(annotations_to_keep, parsed_annotations_dict), 20)
                                     )
     annotations_to_keep.extend(helper.handle_last_modified_date(existing_annotations_dict, parsed_annotations_dict, last_modified_dates))
+    print(f"Found {len(annotations_to_keep)} annotations to keep after checking last modified dates")
     md5_checksums_tuples = asyncio.run(
                                         async_ops.stream_md5_checksum_many(
                                             helper.get_tuples_to_check(annotations_to_keep, parsed_annotations_dict), 20)
                                     )
     annotations_to_keep.extend(helper.handle_md5_checksum(existing_annotations_dict, parsed_annotations_dict, md5_checksums_tuples))
-    
+    print(f"Found {len(annotations_to_keep)} annotations to keep after checking md5 checksums")
     merged_annotations = helper.merge_annotations(existing_annotations_dict, parsed_annotations_dict, annotations_to_keep)
     print(f"Merged {len(merged_annotations)} annotations")
     
