@@ -1,0 +1,89 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Genome Annotation",
+    "type": "object",
+    "required": [
+        "assembly_accession",
+        "assembly_name",
+        "taxon_id",
+        "organism_name",
+        "source_database",
+        "annotation_provider",
+        "access_url",
+        "md5_checksum",
+        "file_format",
+        "last_modified_date",
+        "submission_date",
+        "retrieval_date"
+    ],
+    "properties": {
+        "assembly_accession": {
+            "type": "string",
+            "pattern": "^GC[AF]_\\d+\\.\\d+$"
+        },
+        "assembly_name": {
+            "type": "string",
+            "description": "Name of the assembly"
+        },
+        "taxon_id": {
+            "type": "string",
+            "description": "Taxonomy ID of the organism"
+        },
+        "organism_name": {
+            "type": "string",
+            "description": "Name of the organism"
+        },
+        "source_database": {
+            "type": "string",
+            "description": "Database of the source"
+        },
+        "annotation_provider": {
+            "type": "string",
+            "description": "Provider of the annotation"
+        },
+        "access_url": {
+            "type": "string",
+            "description": "URL to the annotation"
+        },
+        "md5_checksum": {
+            "type": "string",
+            "description": "MD5 checksum of the uncompressed annotation file"
+        },
+        "file_format": {
+            "type": "string",
+            "description": "Format of the file",
+            "enum": [
+                "gff",
+                "gtf"
+            ]
+        },
+        "last_modified_date": {
+            "type": "string",
+            "format": "date",
+            "description": "Date the annotation was last modified"
+        },
+        "release_date": {
+            "type": "string",
+            "format": "date",
+            "description": "Date the annotation was submitted"
+        },
+        "retrieval_date": {
+            "type": "string",
+            "format": "date",
+            "description": "Date the annotation was retrieved by the job"
+        },
+        "pipeline_name": {
+            "type": "string",
+            "description": "Name of the pipeline or method used to generate the annotation, example: BRAKER, Gnomon, Ensembl genebuild"
+        },
+        "pipeline_version": {
+            "type": "string",
+            "description": "Version of the pipeline or method used to generate the annotation, example: 2.1.6, 2024-06"
+        },
+        "pipeline_method": {
+            "type": "string",
+            "description": "Method used to generate the annotation"
+        }
+    },
+    "additionalProperties": false
+}
