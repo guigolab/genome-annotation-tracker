@@ -51,8 +51,6 @@ def fetch_eukaryotic_genomes()->list[str]:
         "genome",
         "taxon",
         TAXON_ID,
-        "--assembly-level",
-        "chromosome,complete",
         "--report",
         "ids_only",
         "--as-json-lines",

@@ -69,8 +69,6 @@ def fetch_and_parse_ncbi_annotated_assemblies(taxon_id: str, db_source: str) -> 
         "taxon",
         taxon_id,
         "--annotated",
-        "--assembly-level",
-        "chromosome,complete",
         "--assembly-source",
         db_source,
         "--as-json-lines",
