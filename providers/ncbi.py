@@ -89,6 +89,7 @@ def fetch_and_parse_ncbi_annotated_assemblies(taxon_id: str, db_source: str) -> 
 
 
 def create_ftp_path(accession: str, assembly_name: str) -> str:
+    assembly_name = assembly_name.replace(" ", "_") # replace spaces with underscores to avoid invalid file names, this fix almost all the issues with the file names
     return f"https://ftp.ncbi.nlm.nih.gov/genomes/all/{accession[0:3]}/{accession[4:7]}/{accession[7:10]}/{accession[10:13]}/{accession}_{assembly_name}/{accession}_{assembly_name}_genomic.gff.gz"
 
 
