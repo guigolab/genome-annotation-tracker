@@ -76,7 +76,6 @@ def parse_annotations(species_path: str, accessions: list[str]) -> dict:
     
     with open(species_path, "r") as f:
         species_data = json.load(f).get("species", {})
-        
         for species_info in species_data.values():
             species_annotations = _parse_species_annotations(species_info, accessions)
             parsed_annotations_dict.update(species_annotations)

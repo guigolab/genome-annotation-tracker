@@ -2,8 +2,8 @@ name: Mirror NCBI GenBank Annotations
 
 on:
   schedule:
-    # Run every Tuesday at 3 AM UTC
-    - cron: '0 3 * * 2'
+    # Run every Friday at 2 AM UTC (second of three sequential runs)
+    - cron: '0 2 * * 5'
   workflow_dispatch: # Allow manual triggering
 
 jobs:
