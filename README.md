@@ -44,7 +44,7 @@ This repository provides an automated system for tracking eukaryotic genome anno
 
 ## Output Files
 
-The system generates three main annotation files in the `data/` directory:
+The system generates three main annotation files in the `data/` directory. Rows are written in **git-friendly order**: keys that already existed in the TSV keep their previous **line order**, and **new** assemblies are appended at the **end** (sorted by `assembly_accession`, then by the row’s primary key). That way a typical commit shows in-place line edits for updates, new lines at the bottom for additions, and removed lines for deletions.
 
 ### 1. `refseq_annotations.tsv`
 Contains NCBI RefSeq annotations with the following columns:
@@ -78,4 +78,29 @@ The repository includes GitHub Actions workflows that automatically maintain the
 - **Ensembl**: Runs every Sunday at 2 AM UTC
 - **NCBI RefSeq**: Runs every Monday at 3 AM UTC  
 - **NCBI GenBank**: Runs every Tuesday at 3 AM UTC
+
+## Development
+
+### Unit tests
+
+From the repository root (stdlib `unittest` only):
+
+```bash
+python3 -m unittest discover -s tests -p 'test_*.py' -v
+```
+
+Optional: install [pytest](https://pytest.org/) and run `pytest tests/` if you prefer.
+
+### Smoke-testing a mirror locally
+
+Requires the [NCBI `datasets` CLI](https://www.ncbi.nlm.nih.gov/datasets/docs/v2/command-line-tools/) on `PATH` and network access. From `providers/`:
+
+```bash
+cd providers
+python ncbi.py genbank
+python ncbi.py refseq
+python ensembl.py
+```
+
+Use the same environment variables as CI (`TAXON_ID`, output paths) if you override defaults.
 

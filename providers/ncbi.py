@@ -5,79 +5,61 @@ import re
 import subprocess
 import os
 import argparse
-from tools import file_handler, async_ops, helper
+import time
+from tools import file_handler, async_ops, helper, pipeline
 from datetime import datetime
-# Environment variables
+
 TAXON_ID = os.getenv("TAXON_ID", "2759")
 GENBANK_OUTPUT_FILE = os.getenv("GENBANK_OUTPUT_FILE", "data/genbank_annotations.tsv")
 REFSEQ_OUTPUT_FILE = os.getenv("REFSEQ_OUTPUT_FILE", "data/refseq_annotations.tsv")
+DATASETS_ATTEMPTS = 3
 
 NCBI_MAPPER = {
-    "genbank":{
+    "genbank": {
         "output_file": GENBANK_OUTPUT_FILE,
         "db_name": "GenBank",
     },
-    "refseq":{
+    "refseq": {
         "output_file": REFSEQ_OUTPUT_FILE,
         "db_name": "RefSeq",
     },
 }
 
-def mirror_ncbi_annotations(db_source: str) -> list[dict]:
 
+def mirror_ncbi_annotations(db_source: str) -> None:
     db_map = NCBI_MAPPER.get(db_source)
     if not db_map:
-        print(f"Error: {db_source} is not a valid database source, must be one of {NCBI_MAPPER.keys()}")
-        return
+        raise ValueError(
+            f"{db_source} is not a valid database source, must be one of {NCBI_MAPPER.keys()}"
+        )
 
-    existing_annotations_dict = file_handler.load_annotations(db_map["output_file"], "assembly_accession")
-    print(f"Found {len(existing_annotations_dict)} existing annotations")
+    def load_universe() -> dict[str, dict]:
+        return fetch_and_parse_ncbi_annotated_assemblies(TAXON_ID, db_map["db_name"])
 
-    parsed_annotations_dict = fetch_and_parse_ncbi_annotated_assemblies(TAXON_ID, db_map["db_name"])
-    if not parsed_annotations_dict:
-        print("Error fetching genbank annotated assemblies")
-        return
-    print(f"Found {len(parsed_annotations_dict)} parsed annotations")
+    def probe_md5(
+        tuples: list[tuple[str, str]], concurrency: int, parsed: dict[str, dict]
+    ) -> list[async_ops.ProbeResult]:
+        return asyncio.run(_probe_ncbi_md5_many(tuples, concurrency, parsed))
 
-    annotations_to_keep = helper.keep_recent_annotations(existing_annotations_dict, parsed_annotations_dict)
-    print(f"Found {len(annotations_to_keep)} annotations to keep")
+    stats_path = os.getenv(
+        "MIRROR_STATS_FILE",
+        os.path.join(os.path.dirname(db_map["output_file"]), f".mirror_stats_{db_source}.json"),
+    )
+    outcomes_path = os.getenv(
+        "MIRROR_OUTCOMES_FILE",
+        os.path.join(os.path.dirname(db_map["output_file"]), f".mirror_outcomes_{db_source}.json"),
+    )
 
-    last_modified_dates = asyncio.run(
-                                        async_ops.check_last_modified_date_many(
-                                                helper.get_tuples_to_check(annotations_to_keep, parsed_annotations_dict), 20)
-                                    )
-    annotations_to_keep.extend(helper.handle_last_modified_date(existing_annotations_dict, parsed_annotations_dict, last_modified_dates))
-    print(f"Found {len(annotations_to_keep)} annotations to keep after checking last modified dates")
+    pipeline.run_mirror(
+        output_file=db_map["output_file"],
+        key_column="assembly_accession",
+        load_universe=load_universe,
+        probe_md5=probe_md5,
+        source_label=db_source,
+        stats_path=stats_path,
+        outcomes_path=outcomes_path,
+    )
 
-    tuples_to_check = helper.get_tuples_to_check(annotations_to_keep, parsed_annotations_dict)
-    md5_checksums_tuples = asyncio.run(fetch_md5_checksum_many(tuples_to_check, 20))
-    # Retry failed paths by scraping the minimal FTP directory to resolve assembly folder name
-    success_accessions = {acc for acc, _ in md5_checksums_tuples}
-    failed_tuples = [(url, acc) for url, acc in tuples_to_check if acc not in success_accessions]
-    if failed_tuples:
-        scraper_results = asyncio.run(fetch_md5_via_scraper_many(failed_tuples, 10))
-        for acc, md5, resolved_url in scraper_results:
-            parsed_annotations_dict[acc]["md5_checksum"] = md5
-            if resolved_url:
-                parsed_annotations_dict[acc]["access_url"] = resolved_url
-        md5_checksums_tuples += [(acc, md5) for acc, md5, _ in scraper_results]
-        # Scraper-resolved URLs were not in the initial last_modified check; fetch it so they pass merge
-        resolved_tuples = [(url, acc) for acc, _, url in scraper_results if url]
-        if resolved_tuples:
-            last_modified_resolved = asyncio.run(
-                async_ops.check_last_modified_date_many(resolved_tuples, 10)
-            )
-            for acc, last_modified in last_modified_resolved:
-                if last_modified:
-                    parsed_annotations_dict[acc]["last_modified_date"] = last_modified
-    annotations_to_keep.extend(helper.handle_md5_checksum(existing_annotations_dict, parsed_annotations_dict, md5_checksums_tuples))
-    print(f"Found {len(annotations_to_keep)} annotations to keep after checking md5 checksums")
-
-    merged_annotations = helper.merge_annotations(existing_annotations_dict, parsed_annotations_dict, annotations_to_keep)
-    print(f"Merged {len(merged_annotations)} annotations")
-    
-    file_handler.write_annotations(merged_annotations, db_map["output_file"])
-    print(f"Written {len(merged_annotations)} annotations to {db_map['output_file']}")
 
 def fetch_and_parse_ncbi_annotated_assemblies(taxon_id: str, db_source: str) -> dict[str, dict]:
     cmd = [
@@ -91,102 +73,105 @@ def fetch_and_parse_ncbi_annotated_assemblies(taxon_id: str, db_source: str) -> 
         db_source,
         "--as-json-lines",
     ]
-    #stream the cmd output and parse each line
-    parsed_annotations_dict = {}
-    with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) as proc:
-        for line in proc.stdout:
-            try:
-                #create a dict from the line with accession as key
-                parsed_annotation = parse_json_line(json.loads(line), db_source)  # Added db_source parameter
-                parsed_annotations_dict[parsed_annotation["assembly_accession"]] = parsed_annotation
-            except Exception as e:
-                print(f"Error parsing line: {line}")
-                print(e)
-                continue
-    return parsed_annotations_dict
+    last_err: Exception | None = None
+    for attempt in range(DATASETS_ATTEMPTS):
+        try:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if proc.returncode != 0:
+                raise RuntimeError(
+                    f"datasets exited {proc.returncode}: {proc.stderr[:500]}"
+                )
+            parsed: dict[str, dict] = {}
+            for line in proc.stdout.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    parsed_annotation = parse_json_line(json.loads(line), db_source)
+                    parsed[parsed_annotation["assembly_accession"]] = parsed_annotation
+                except Exception as e:
+                    print(f"Error parsing line: {line[:120]}... {e}")
+            if parsed:
+                return parsed
+            raise RuntimeError("datasets returned zero assemblies")
+        except Exception as e:
+            last_err = e
+            if attempt < DATASETS_ATTEMPTS - 1:
+                time.sleep(min(2**attempt, 30))
+    raise RuntimeError(f"Failed to fetch NCBI assemblies after {DATASETS_ATTEMPTS} attempts: {last_err}")
 
 
 def create_ftp_path(accession: str, assembly_name: str) -> str:
-    assembly_name = assembly_name.replace(" ", "_") # replace spaces with underscores to avoid invalid file names, this fix almost all the issues with the file names
-    return f"https://ftp.ncbi.nlm.nih.gov/genomes/all/{accession[0:3]}/{accession[4:7]}/{accession[7:10]}/{accession[10:13]}/{accession}_{assembly_name}/{accession}_{assembly_name}_genomic.gff.gz"
+    assembly_name = assembly_name.replace(" ", "_")
+    return (
+        f"https://ftp.ncbi.nlm.nih.gov/genomes/all/"
+        f"{accession[0:3]}/{accession[4:7]}/{accession[7:10]}/{accession[10:13]}/"
+        f"{accession}_{assembly_name}/{accession}_{assembly_name}_genomic.gff.gz"
+    )
 
 
 def get_minimal_ftp_path(ftp_path: str) -> str:
-    """
-    Return the FTP path up to the accession split (no assembly folder).
-    E.g. .../all/GCF/000/001/405/GCF_000001405.40_GRCh38.p14/file.gz
-    -> .../all/GCF/000/001/405/
-    """
     parts = ftp_path.rstrip("/").split("/")
-    # Path: [protocol, '', host, 'genomes', 'all', p0, p1, p2, p3, assembly_dir, ...]
-    # We want up to and including p3 (index 8 in 0-based).
     if len(parts) < 10:
         return ftp_path
-    minimal = "/".join(parts[:9]) + "/"
-    return minimal
+    return "/".join(parts[:9]) + "/"
 
 
 async def _scrape_ftp_directory_listing(session: aiohttp.ClientSession, url: str) -> list[str]:
-    """
-    Fetch FTP directory listing (HTML) and return list of subdirectory names
-    (links ending with /, excluding . and ..).
-    """
+    result = await async_ops.request_with_retry(session, "GET", url)
+    if result is None:
+        return []
+    status, _ = result
+    if status >= 400:
+        return []
     try:
-        async with session.get(url, timeout=30) as resp:
-            resp.raise_for_status()
+        async with session.get(url, allow_redirects=True) as resp:
             content = await resp.text()
     except Exception:
         return []
-    # Match href=".../" - directory links (relative or with path)
     dirs = re.findall(r'href="([^"]+/)"', content)
-    result = []
+    out = []
     for d in dirs:
         name = d.rstrip("/").split("/")[-1]
         if name and name not in (".", ".."):
-            result.append(name)
-    return result
+            out.append(name)
+    return out
 
 
 async def resolve_and_fetch_md5(
     session: aiohttp.ClientSession, ftp_path: str, accession: str
 ) -> tuple[str | None, str | None]:
-    """
-    When the built FTP path is not found, scrape the minimal path (up to accession split),
-    find the actual assembly directory (handles weird characters in assembly name),
-    and return (md5_checksum, resolved_gff_url) or (None, None).
-    """
     minimal = get_minimal_ftp_path(ftp_path)
     dirs = await _scrape_ftp_directory_listing(session, minimal)
     if not dirs:
         return None, None
-    # Prefer directories that match this accession (e.g. GCF_000001405.40_...)
     candidates = [d for d in dirs if d == accession or d.startswith(accession + "_")]
     if not candidates:
         candidates = dirs
     for dirname in candidates:
         base = f"{minimal}{dirname}/"
         checksums_url = f"{base}uncompressed_checksums.txt"
-        try:
-            async with session.get(checksums_url, timeout=30) as r:
-                r.raise_for_status()
-                content = await r.text()
-        except Exception:
+        text_result = await async_ops.fetch_url_text(session, checksums_url, accession)
+        if text_result.status != "ok" or not text_result.value:
             continue
-        for line in content.split("\n"):
+        for line in text_result.value.split("\n"):
             if not line.strip():
                 continue
             parts = line.split("\t")
             if len(parts) >= 2 and "genomic.gff" in parts[0]:
-                # Filename in checksums may be ./name and is uncompressed (_genomic.gff); server has _genomic.gff.gz
                 gff_name = parts[0].strip().lstrip("./")
                 if gff_name.endswith(".gff") and not gff_name.endswith(".gff.gz"):
                     gff_name += ".gz"
-                resolved_url = f"{base}{gff_name}"
-                return parts[1].strip(), resolved_url
+                return parts[1].strip(), f"{base}{gff_name}"
     return None, None
 
 
-def parse_json_line(line:dict, db_source: str) -> dict:
+def parse_json_line(line: dict, db_source: str) -> dict:
     organism_info = line.get("organism", {})
     annotation_info = line.get("annotation_info", {})
     assembly_info = line.get("assembly_info", {})
@@ -208,64 +193,75 @@ def parse_json_line(line:dict, db_source: str) -> dict:
     }
 
 
-async def fetch_md5_checksum(session: aiohttp.ClientSession, ftp_path: str) -> str:
-    """
-    This function fetches the uncompressed MD5 checksum of the annotation file from ncbi ftp server.
-    """
+async def _fetch_md5_from_checksums_file(
+    session: aiohttp.ClientSession, ftp_path: str, key: str
+) -> async_ops.ProbeResult:
     base_path = ftp_path.rsplit("/", 1)[0]
     url = f"{base_path}/uncompressed_checksums.txt"
-    try:
-        async with session.get(url, timeout=60) as r:
-            r.raise_for_status()
-            content = await r.text()
-            lines = content.split('\n')
-            for line in lines:
-                if not line.strip():  # Skip empty lines
-                    continue
-                splitted = line.split("\t")
-                if 'genomic.gff' in splitted[0]:
-                    return splitted[1].strip()
-    except Exception:
-        pass
-    return None
-
-
-async def fetch_md5_checksum_many(tuples: list[tuple[str, str]], concurrency: int = 20) -> list[tuple[str, str]]:
-    """
-    Fetch the MD5 checksum of multiple annotation files from ncbi ftp server.
-    """
-    return await async_ops.fetch_data_many(tuples, fetch_md5_checksum, concurrency)
-
-
-async def fetch_md5_via_scraper_many(
-    failed_tuples: list[tuple[str, str]], concurrency: int = 10
-) -> list[tuple[str, str, str | None]]:
-    """
-    For paths that were not found, scrape the minimal FTP path to discover the real
-    assembly directory and fetch MD5. Returns list of (accession, md5, resolved_url).
-    """
-    results: list[tuple[str, str, str | None]] = []
-    sem = asyncio.Semaphore(concurrency)
-
-    async def bound_resolve(session: aiohttp.ClientSession, ftp_path: str, accession: str):
-        async with sem:
-            md5, resolved_url = await resolve_and_fetch_md5(session, ftp_path, accession)
-            if md5:
-                results.append((accession, md5, resolved_url))
-
-    async with aiohttp.ClientSession() as session:
-        await asyncio.gather(
-            *(bound_resolve(session, ftp_path, accession) for ftp_path, accession in failed_tuples)
+    text_result = await async_ops.fetch_url_text(session, url, key)
+    if text_result.status == "not_found":
+        return async_ops.ProbeResult(key=key, status="not_found", detail=text_result.detail)
+    if text_result.status != "ok" or not text_result.value:
+        return async_ops.ProbeResult(
+            key=key, status="transient_error", detail=text_result.detail or "checksums_fetch_failed"
         )
-    return results
+    for line in text_result.value.split("\n"):
+        if not line.strip():
+            continue
+        splitted = line.split("\t")
+        if "genomic.gff" in splitted[0] and len(splitted) >= 2:
+            return async_ops.ProbeResult(
+                key=key, status="ok", value=splitted[1].strip(), detail="checksums_file"
+            )
+    return async_ops.ProbeResult(key=key, status="transient_error", detail="no_gff_in_checksums")
+
+
+async def _probe_ncbi_md5_one(
+    session: aiohttp.ClientSession, url: str, key: str, parsed_updates: dict
+) -> async_ops.ProbeResult:
+    result = await _fetch_md5_from_checksums_file(session, url, key)
+    if result.status == "ok":
+        return result
+    if result.status == "not_found":
+        md5, resolved_url = await resolve_and_fetch_md5(session, url, key)
+        if md5:
+            if key in parsed_updates and resolved_url:
+                parsed_updates[key]["access_url"] = resolved_url
+            return async_ops.ProbeResult(key=key, status="ok", value=md5, detail="ftp_scraper")
+        return async_ops.ProbeResult(key=key, status="not_found", detail="scraper_not_found")
+    # transient — try scraper before giving up
+    md5, resolved_url = await resolve_and_fetch_md5(session, url, key)
+    if md5:
+        if key in parsed_updates and resolved_url:
+            parsed_updates[key]["access_url"] = resolved_url
+        return async_ops.ProbeResult(key=key, status="ok", value=md5, detail="ftp_scraper_fallback")
+    return result
+
+
+async def _probe_ncbi_md5_many(
+    tuples: list[tuple[str, str]], concurrency: int, parsed: dict[str, dict]
+) -> list[async_ops.ProbeResult]:
+    async def bound(session: aiohttp.ClientSession, url: str, key: str) -> async_ops.ProbeResult:
+        return await _probe_ncbi_md5_one(session, url, key, parsed)
+
+    return await async_ops.probe_many(tuples, bound, concurrency)
+
+
+def apply_parsed_updates(parsed: dict[str, dict], updates: dict[str, dict]) -> None:
+    for k, v in updates.items():
+        if k in parsed and "access_url" in v:
+            parsed[k]["access_url"] = v["access_url"]
+
 
 if __name__ == "__main__":
-    #get args from command line
     parser = argparse.ArgumentParser(description="Mirror NCBI genome annotations")
-    parser.add_argument("db_source", type=str, choices=list(NCBI_MAPPER.keys()), 
-                       help="Database source: 'genbank' or 'refseq'")
+    parser.add_argument(
+        "db_source",
+        type=str,
+        choices=list(NCBI_MAPPER.keys()),
+        help="Database source: 'genbank' or 'refseq'",
+    )
     args = parser.parse_args()
-    
     print(f"Starting mirror process for {args.db_source} annotations...")
-    result = mirror_ncbi_annotations(args.db_source)
+    mirror_ncbi_annotations(args.db_source)
     print(f"Mirror process completed for {args.db_source}")

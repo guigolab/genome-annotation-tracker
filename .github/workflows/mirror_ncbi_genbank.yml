@@ -51,6 +51,8 @@ jobs:
       env:
         TAXON_ID: "2759"  # Eukaryotes
         GENBANK_OUTPUT_FILE: "../data/genbank_annotations.tsv"
+        MIRROR_STATS_FILE: "../data/.mirror_stats_genbank.json"
+        MIRROR_OUTCOMES_FILE: "../data/.mirror_outcomes_genbank.json"
     - name: Check for changes
       id: check-changes
       run: |
@@ -74,10 +76,26 @@ jobs:
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
+        STATS_FILE="data/.mirror_stats_genbank.json"
+        ADDED=0
+        UPDATED=0
+        DELETED=0
+        if [ -f "$STATS_FILE" ]; then
+          read -r ADDED UPDATED DELETED <<< "$(python3 -c "import json; d=json.load(open('${STATS_FILE}')); print(d['added'], d['updated'], d['deleted'])")"
+        fi
+        ROWS=$(($(wc -l < data/genbank_annotations.tsv) - 1)))
         git add data/genbank_annotations.tsv
-        git commit -m "Update NCBI GenBank annotations [automated]
-
-        - Updated on $(date -u '+%Y-%m-%d %H:%M:%S UTC')
-        - File contains $(wc -l < data/genbank_annotations.tsv) annotations"
+        git commit -m "Update NCBI GenBank annotations [automated]" \
+          -m "Added: ${ADDED} | Updated: ${UPDATED} | Deleted: ${DELETED}" \
+          -m "Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" \
+          -m "Data rows (excl. header): ${ROWS}"
         git push
+
+    - name: Upload mirror outcomes artifact
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: mirror-outcomes-genbank
+        path: data/.mirror_outcomes_genbank.json
+        if-no-files-found: ignore
     

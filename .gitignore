@@ -1,3 +1,6 @@
+data/.mirror_stats*.json
+data/.mirror_outcomes*.json
+.venv/
 __pycache__/
 Pipfile
 Pipfile.lock
