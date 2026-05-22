@@ -14,13 +14,15 @@ from tools.async_ops import ProbeResult
 LmOutcome = Literal["reuse_existing", "refresh_md5", "gone", "transient"]
 FinalOutcome = Literal["emit_existing", "emit_new", "gone", "skip_new"]
 
+RECENT_RETRIEVAL_DAYS = 14
+
 
 def keep_recent_annotations(
     existing_annotations_dict: dict, parsed_annotations_dict: dict
 ) -> list[str]:
-    """Keys recently retrieved (<30d) that still appear in the source listing — skip re-probe."""
+    """Keys recently retrieved (<14d) that still appear in the source listing — skip re-probe."""
     annotations_to_keep: list[str] = []
-    one_month_ago = datetime.now().date() - timedelta(days=30)
+    cutoff = datetime.now().date() - timedelta(days=RECENT_RETRIEVAL_DAYS)
     for unique_identifier, existing_annotation in existing_annotations_dict.items():
         if unique_identifier not in parsed_annotations_dict:
             continue
@@ -30,7 +32,7 @@ def keep_recent_annotations(
             ).date()
         except ValueError:
             continue
-        if existing_date > one_month_ago:
+        if existing_date > cutoff:
             annotations_to_keep.append(unique_identifier)
     return annotations_to_keep
 
@@ -74,7 +76,6 @@ def decide_last_modified_outcomes(
         elif result.status == "ok":
             existing_lm = (existing.get(key) or {}).get("last_modified_date")
             if key in existing and result.value == existing_lm:
-                existing[key]["retrieval_date"] = row.get("retrieval_date")
                 outcomes[key] = "reuse_existing"
             else:
                 row["last_modified_date"] = result.value
@@ -147,10 +148,27 @@ def decide_md5_outcomes(
     return final
 
 
+def _should_refresh_retrieval_date(
+    key: str,
+    outcome: FinalOutcome,
+    lm_probed_keys: set[str],
+    md5_probed_keys: set[str],
+) -> bool:
+    if outcome == "emit_new":
+        return True
+    if outcome == "emit_existing":
+        return key in lm_probed_keys or key in md5_probed_keys
+    return False
+
+
 def build_merged_rows(
     existing: dict[str, dict],
     parsed: dict[str, dict],
     final_outcomes: dict[str, FinalOutcome],
+    *,
+    run_date: str,
+    lm_probed_keys: set[str],
+    md5_probed_keys: set[str],
 ) -> tuple[list[dict], dict[str, str]]:
     """
     Build merged row list and per-key outcome labels for logging.
@@ -167,8 +185,10 @@ def build_merged_rows(
         if outcome == "emit_existing":
             if key in existing:
                 row = dict(existing[key])
-                if key in parsed:
-                    row["retrieval_date"] = parsed[key].get("retrieval_date", row.get("retrieval_date"))
+                if _should_refresh_retrieval_date(
+                    key, outcome, lm_probed_keys, md5_probed_keys
+                ):
+                    row["retrieval_date"] = run_date
                 rows.append(row)
                 seen.add(key)
         elif outcome == "emit_new":
@@ -187,6 +207,7 @@ def build_merged_rows(
                     log[key] = "emit_existing_fallback"
                 continue
             prow["last_modified_date"] = eff_lm
+            prow["retrieval_date"] = run_date
             rows.append(prow)
             seen.add(key)
 

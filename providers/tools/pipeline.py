@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import Callable
+from datetime import datetime
 
 from tools import file_handler, helper
 from tools.async_ops import DEFAULT_CONCURRENCY, ProbeResult, check_last_modified_date_many
@@ -34,16 +35,22 @@ def run_mirror(
     print(f"[{source_label}] Found {len(parsed)} annotations in source listing")
 
     source_keys = set(parsed.keys())
+    run_date = datetime.now().date().isoformat()
     skip_keys = set(helper.keep_recent_annotations(existing, parsed))
-    print(f"[{source_label}] Skipping re-probe for {len(skip_keys)} recently retrieved rows")
+    print(
+        f"[{source_label}] Skipping re-probe for {len(skip_keys)} rows "
+        f"retrieved within {helper.RECENT_RETRIEVAL_DAYS} days"
+    )
 
     lm_tuples = helper.get_tuples_to_check(skip_keys, parsed)
+    lm_probed_keys = {key for _, key in lm_tuples}
     print(f"[{source_label}] Probing last-modified for {len(lm_tuples)} rows...")
     lm_results = asyncio.run(check_last_modified_date_many(lm_tuples, concurrency))
     lm_outcomes = helper.decide_last_modified_outcomes(existing, parsed, lm_results, skip_keys)
 
     md5_keys = {k for k, o in lm_outcomes.items() if o == "refresh_md5"}
     md5_tuples = [(parsed[k]["access_url"], k) for k in md5_keys if k in parsed]
+    md5_probed_keys = {key for _, key in md5_tuples}
     print(f"[{source_label}] Fetching MD5 for {len(md5_tuples)} rows...")
     md5_results: list[ProbeResult] = []
     if md5_tuples:
@@ -52,7 +59,14 @@ def run_mirror(
     final_outcomes = helper.decide_md5_outcomes(
         existing, parsed, md5_results, lm_outcomes, source_keys
     )
-    merged_rows, outcome_log = helper.build_merged_rows(existing, parsed, final_outcomes)
+    merged_rows, outcome_log = helper.build_merged_rows(
+        existing,
+        parsed,
+        final_outcomes,
+        run_date=run_date,
+        lm_probed_keys=lm_probed_keys,
+        md5_probed_keys=md5_probed_keys,
+    )
     print(f"[{source_label}] Merged {len(merged_rows)} annotations")
 
     merged_ordered = helper.order_merged_annotations_for_git(

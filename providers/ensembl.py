@@ -5,8 +5,6 @@ import subprocess
 import json
 import time
 from tools import file_handler, helper, async_ops, pipeline
-from datetime import datetime
-
 TAXON_ID = os.getenv("TAXON_ID", "2759")
 ENSEMBL_FTP_DIR = "https://ftp.ebi.ac.uk/pub/ensemblorganisms"
 SPECIES_URL = f"{ENSEMBL_FTP_DIR}/species.json"
@@ -179,7 +177,6 @@ def _create_annotation(
     organism_name: str,
 ) -> dict | None:
     release_date = format_release_date(info.get("release"))
-    retrieval_date = datetime.now().isoformat().split("T")[0]
     sub_path = (
         info.get("paths", {})
         .get("genebuild", {})
@@ -200,7 +197,6 @@ def _create_annotation(
         "access_url": access_url,
         "file_format": "gff",
         "release_date": release_date,
-        "retrieval_date": retrieval_date,
         "pipeline_name": pipeline_name,
         "pipeline_method": None,
         "pipeline_version": None,

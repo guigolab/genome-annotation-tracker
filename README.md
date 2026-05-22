@@ -56,8 +56,8 @@ Contains NCBI RefSeq annotations with the following columns:
 - `annotation_provider`: Annotation provider 
 - `access_url`: Direct URL to the annotation file
 - `file_format`: "gff"
-- `release_date`: Date when the annotation was released
-- `retrieval_date`: Date when the annotation was retrieved
+- `release_date`: Date when the annotation was released (from NCBI/Ensembl metadata)
+- `retrieval_date`: Date when the mirror last **successfully probed** the annotation URL (HTTP Last-Modified and/or MD5). Rows with a `retrieval_date` within the last **14 days** skip FTP re-probes until that window expires; appearing in the source listing alone does not refresh this field.
 - `pipeline_name`: Name of the annotation pipeline if any
 - `pipeline_method`: Method used for annotation if any
 - `pipeline_version`: Version of the annotation pipeline if any

@@ -7,8 +7,6 @@ import os
 import argparse
 import time
 from tools import file_handler, async_ops, helper, pipeline
-from datetime import datetime
-
 TAXON_ID = os.getenv("TAXON_ID", "2759")
 GENBANK_OUTPUT_FILE = os.getenv("GENBANK_OUTPUT_FILE", "data/genbank_annotations.tsv")
 REFSEQ_OUTPUT_FILE = os.getenv("REFSEQ_OUTPUT_FILE", "data/refseq_annotations.tsv")
@@ -186,7 +184,6 @@ def parse_json_line(line: dict, db_source: str) -> dict:
         "access_url": access_url,
         "file_format": "gff",
         "release_date": annotation_info.get("release_date"),
-        "retrieval_date": datetime.now().isoformat().split("T")[0],
         "pipeline_name": annotation_info.get("pipeline"),
         "pipeline_method": annotation_info.get("method"),
         "pipeline_version": annotation_info.get("software_version"),
