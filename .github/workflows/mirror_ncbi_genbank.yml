@@ -83,7 +83,7 @@ jobs:
         if [ -f "$STATS_FILE" ]; then
           read -r ADDED UPDATED DELETED <<< "$(python3 -c "import json; d=json.load(open('${STATS_FILE}')); print(d['added'], d['updated'], d['deleted'])")"
         fi
-        ROWS=$(($(wc -l < data/genbank_annotations.tsv) - 1)))
+        ROWS=$(($(wc -l < data/genbank_annotations.tsv) - 1))
         git add data/genbank_annotations.tsv
         git commit -m "Update NCBI GenBank annotations [automated]" \
           -m "Added: ${ADDED} | Updated: ${UPDATED} | Deleted: ${DELETED}" \

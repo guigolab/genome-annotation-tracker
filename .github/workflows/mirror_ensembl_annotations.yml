@@ -79,7 +79,7 @@ jobs:
         if [ -f "$STATS_FILE" ]; then
           read -r ADDED UPDATED DELETED <<< "$(python3 -c "import json; d=json.load(open('${STATS_FILE}')); print(d['added'], d['updated'], d['deleted'])")"
         fi
-        ROWS=$(($(wc -l < data/ensembl_annotations.tsv) - 1)))
+        ROWS=$(($(wc -l < data/ensembl_annotations.tsv) - 1))
         git add data/ensembl_annotations.tsv
         git commit -m "Update Ensembl annotations [automated]" \
           -m "Added: ${ADDED} | Updated: ${UPDATED} | Deleted: ${DELETED}" \

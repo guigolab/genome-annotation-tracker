@@ -83,7 +83,7 @@ jobs:
         if [ -f "$STATS_FILE" ]; then
           read -r ADDED UPDATED DELETED <<< "$(python3 -c "import json; d=json.load(open('${STATS_FILE}')); print(d['added'], d['updated'], d['deleted'])")"
         fi
-        ROWS=$(($(wc -l < data/refseq_annotations.tsv) - 1)))
+        ROWS=$(($(wc -l < data/refseq_annotations.tsv) - 1))
         git add data/refseq_annotations.tsv
         git commit -m "Update NCBI RefSeq annotations [automated]" \
           -m "Added: ${ADDED} | Updated: ${UPDATED} | Deleted: ${DELETED}" \
