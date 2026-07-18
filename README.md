@@ -6,11 +6,12 @@ The **Genome Annotation Tracker** is an automated system designed to track and m
 
 ## Overview
 
-This repository provides an automated system for tracking eukaryotic genome annotations from three major sources:
+This repository provides an automated system for tracking eukaryotic genome annotations from four major sources:
 
 - **NCBI RefSeq**: Curated, non-redundant reference sequences with high-quality annotations
 - **NCBI GenBank**: Comprehensive collection of all publicly available DNA sequences
 - **Ensembl**: Rapid release and curated annotations from species across the tree of life
+- **CommunityRegistry (annotrieve-registry)**: Contributor-submitted annotations from the [Annotrieve community registry](https://github.com/guigolab/annotrieve-registry)
 
 ## Features
 
@@ -42,9 +43,16 @@ This repository provides an automated system for tracking eukaryotic genome anno
 - **Assembly Level**: All available assemblies
 - **Taxon Focus**: Eukaryotes (TaxID: 2759)
 
+### CommunityRegistry (annotrieve-registry)
+- **Source**: [annotrieve-registry](https://github.com/guigolab/annotrieve-registry) project folders (`manifest.yaml` + `annotations.tsv`)
+- **Format**: GFF3 files (plain or gzipped)
+- **Update Frequency**: Weekly (Fridays, after NCBI/Ensembl mirrors)
+- **Assembly Level**: All assemblies listed in the registry
+- **Taxon Focus**: All assemblies with valid NCBI accessions in the registry
+
 ## Output Files
 
-The system generates three main annotation files in the `data/` directory. Rows are written in **git-friendly order**: keys that already existed in the TSV keep their previous **line order**, and **new** assemblies are appended at the **end** (sorted by `assembly_accession`, then by the row’s primary key). That way a typical commit shows in-place line edits for updates, new lines at the bottom for additions, and removed lines for deletions.
+The system generates four main annotation files in the `data/` directory. Rows are written in **git-friendly order**: keys that already existed in the TSV keep their previous **line order**, and **new** assemblies are appended at the **end** (sorted by `assembly_accession`, then by the row’s primary key). That way a typical commit shows in-place line edits for updates, new lines at the bottom for additions, and removed lines for deletions.
 
 ### 1. `refseq_annotations.tsv`
 Contains NCBI RefSeq annotations with the following columns:
@@ -70,14 +78,18 @@ Contains NCBI GenBank annotations with the same structure as RefSeq annotations.
 ### 3. `ensembl_annotations.tsv`
 Contains Ensembl annotations with the same structure as NCBI annotations.
 
+### 4. `community_annotations.tsv`
+Contains community registry annotations with the same structure as the other TSVs. Rows are keyed by `access_url` (like Ensembl). `source_database` is `"CommunityRegistry"`; `annotation_provider` comes from each project's `manifest.yaml`; `pipeline_name` is the registry project folder name (e.g. `TOGA2`). `release_date` is frozen on first successful import from the GFF file's HTTP `Last-Modified`; `last_modified_date` is refreshed on each mirror run.
+
 ## Automated Workflows
 
 The repository includes GitHub Actions workflows that automatically maintain the annotation files:
 
 ### Scheduled Workflows
-- **Ensembl**: Runs every Sunday at 2 AM UTC
-- **NCBI RefSeq**: Runs every Monday at 3 AM UTC  
-- **NCBI GenBank**: Runs every Tuesday at 3 AM UTC
+- **Ensembl**: Runs every Friday at 12 AM UTC
+- **NCBI RefSeq**: Runs every Friday at 2 AM UTC  
+- **NCBI GenBank**: Runs every Friday at 4 AM UTC
+- **CommunityRegistry**: Runs every Friday at 6 AM UTC (checks out `guigolab/annotrieve-registry` and mirrors all projects except `sample_project`)
 
 ## Development
 
@@ -100,7 +112,15 @@ cd providers
 python ncbi.py genbank
 python ncbi.py refseq
 python ensembl.py
+python registry.py
 ```
 
-Use the same environment variables as CI (`TAXON_ID`, output paths) if you override defaults.
+Use the same environment variables as CI (`TAXON_ID`, output paths) if you override defaults. For the community provider, also set `REGISTRY_ROOT` to a checkout of [annotrieve-registry](https://github.com/guigolab/annotrieve-registry) (default: `../annotrieve-registry`):
+
+```bash
+cd providers
+REGISTRY_ROOT=../annotrieve-registry \
+OUTPUT_FILE=../data/community_annotations.tsv \
+python registry.py
+```
 

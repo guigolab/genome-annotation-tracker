@@ -1,0 +1,102 @@
+name: Mirror Community Annotations
+
+on:
+  schedule:
+    # Run every Friday at 6 AM UTC (after NCBI/Ensembl mirrors)
+    - cron: '0 6 * * 5'
+  workflow_dispatch:
+
+jobs:
+  mirror-community:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout genome-annotation-tracker
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+
+    - name: Checkout annotrieve-registry
+      uses: actions/checkout@v4
+      with:
+        repository: guigolab/annotrieve-registry
+        ref: master
+        path: annotrieve-registry
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y tabix curl
+
+    - name: Install NCBI datasets CLI
+      run: |
+        curl -o datasets 'https://ftp.ncbi.nlm.nih.gov/pub/datasets/command-line/LATEST/linux-amd64/datasets'
+        chmod +x datasets
+        sudo mv datasets /usr/local/bin/
+        datasets --version
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run community registry annotation mirroring
+      run: |
+        cd providers
+        python registry.py
+      env:
+        REGISTRY_ROOT: ../annotrieve-registry
+        OUTPUT_FILE: ../data/community_annotations.tsv
+        MIRROR_STATS_FILE: ../data/.mirror_stats_community.json
+        MIRROR_OUTCOMES_FILE: ../data/.mirror_outcomes_community.json
+
+    - name: Check for changes
+      id: check-changes
+      run: |
+        if [ -f "data/community_annotations.tsv" ]; then
+          if [ -n "$(git status --porcelain data/community_annotations.tsv)" ]; then
+            echo "changes=true" >> $GITHUB_OUTPUT
+            echo "Changes detected in community_annotations.tsv"
+            echo "File size: $(wc -l < data/community_annotations.tsv) lines"
+          else
+            echo "changes=false" >> $GITHUB_OUTPUT
+            echo "No changes detected"
+          fi
+        else
+          echo "changes=false" >> $GITHUB_OUTPUT
+          echo "Output file not found"
+        fi
+
+    - name: Commit and push changes
+      if: steps.check-changes.outputs.changes == 'true'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        STATS_FILE="data/.mirror_stats_community.json"
+        ADDED=0
+        UPDATED=0
+        DELETED=0
+        if [ -f "$STATS_FILE" ]; then
+          read -r ADDED UPDATED DELETED <<< "$(python3 -c "import json; d=json.load(open('${STATS_FILE}')); print(d['added'], d['updated'], d['deleted'])")"
+        fi
+        ROWS=$(($(wc -l < data/community_annotations.tsv) - 1))
+        git add data/community_annotations.tsv
+        git commit -m "Update community annotations [automated]" \
+          -m "Added: ${ADDED} | Updated: ${UPDATED} | Deleted: ${DELETED}" \
+          -m "Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" \
+          -m "Data rows (excl. header): ${ROWS}"
+        git push
+
+    - name: Upload mirror outcomes artifact
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: mirror-outcomes-community
+        path: data/.mirror_outcomes_community.json
+        if-no-files-found: ignore
